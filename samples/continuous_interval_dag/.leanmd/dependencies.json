@@ -4,37 +4,37 @@
     {
       "from": "continuous_interval_consequences.md",
       "to": "boundedness_argument/boundedness_argument.md",
-      "kind": "proof"
+      "kind": "why"
     },
     {
       "from": "continuous_interval_consequences.md",
       "to": "uniform_continuity_argument/uniform_continuity_argument.md",
-      "kind": "proof"
+      "kind": "why"
     },
     {
       "from": "boundedness_argument/boundedness_argument.md",
       "to": "boundedness_argument/bolzano_weierstrass_subsequence/bolzano_weierstrass_subsequence.md",
-      "kind": "proof"
+      "kind": "why"
     },
     {
       "from": "boundedness_argument/boundedness_argument.md",
       "to": "boundedness_argument/sequential_continuity/sequential_continuity.md",
-      "kind": "proof"
+      "kind": "why"
     },
     {
       "from": "uniform_continuity_argument/uniform_continuity_argument.md",
       "to": "boundedness_argument/bolzano_weierstrass_subsequence/bolzano_weierstrass_subsequence.md",
-      "kind": "proof"
+      "kind": "why"
     },
     {
       "from": "uniform_continuity_argument/uniform_continuity_argument.md",
       "to": "boundedness_argument/sequential_continuity/sequential_continuity.md",
-      "kind": "proof"
+      "kind": "why"
     },
     {
       "from": "uniform_continuity_argument/uniform_continuity_argument.md",
       "to": "uniform_continuity_argument/nearby_sequences_share_limit/nearby_sequences_share_limit.md",
-      "kind": "proof"
+      "kind": "why"
     }
   ]
 }

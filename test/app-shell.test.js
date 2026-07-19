@@ -58,14 +58,14 @@ test("opens relative Markdown links through the desktop host", () => {
   );
 });
 
-test("opens only undiscovered reference Markdown links as independent windows", () => {
-  assert.match(desktopHost, /role\?\.Equals\(\s*"reference"/);
+test("opens only undiscovered recall Markdown links as independent windows", () => {
+  assert.match(desktopHost, /role\?\.Equals\(\s*"recall"/);
   assert.match(desktopHost, /bool targetWasDiscovered = _mapNodes\.Contains/);
-  assert.match(desktopHost, /if \(isReference && !targetWasDiscovered\)/);
-  assert.match(desktopHost, /_openReferenceWindow\(linkedPath, this\)/);
-  assert.match(desktopHost, /ApplyReferenceWindowBounds\(referenceSource\)/);
+  assert.match(desktopHost, /if \(isRecall && !targetWasDiscovered\)/);
+  assert.match(desktopHost, /_openRecallWindow\(linkedPath, this\)/);
+  assert.match(desktopHost, /ApplyRecallWindowBounds\(recallSource\)/);
   assert.match(desktopProgram, /new LeanMDApplicationContext\(markdownPath\)/);
-  assert.match(desktopApplicationContext, /new MainForm\(markdownPath, OpenReferenceWindow/);
+  assert.match(desktopApplicationContext, /new MainForm\(markdownPath, OpenRecallWindow/);
   assert.match(desktopApplicationContext, /if \(_openWindowCount == 0\)/);
 });
 

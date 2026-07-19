@@ -44,28 +44,28 @@ test("renders every document in the continuous-interval DAG sample", () => {
   }
 });
 
-test("stores per-document and aggregate proof-only DAG metadata", () => {
+test("stores per-document and aggregate why-only DAG metadata", () => {
   const files = markdownFiles(sampleRoot);
 
   for (const file of files) {
     const sidecarPath = `${file}.leanmd.json`;
-    assert.ok(existsSync(sidecarPath), `Missing proof sidecar for ${file}`);
+    assert.ok(existsSync(sidecarPath), `Missing why sidecar for ${file}`);
 
     const sidecar = JSON.parse(readFileSync(sidecarPath, "utf8"));
     const document = path.relative(sampleRoot, file).replaceAll("\\", "/");
     assert.equal(sidecar.document, document);
-    assert.ok(Array.isArray(sidecar.proofLinks));
-    assert.equal(Object.hasOwn(sidecar, "references"), false);
+    assert.ok(Array.isArray(sidecar.whyLinks));
+    assert.equal(Object.hasOwn(sidecar, "recallLinks"), false);
   }
 
   const manifest = JSON.parse(
     readFileSync(path.join(sampleRoot, ".leanmd", "dependencies.json"), "utf8"),
   );
-  assert.ok(manifest.edges.every((edge) => edge.kind === "proof"));
-  assert.doesNotMatch(JSON.stringify(manifest), /reference/i);
+  assert.ok(manifest.edges.every((edge) => edge.kind === "why"));
+  assert.doesNotMatch(JSON.stringify(manifest), /recall/i);
 });
 
-test("owns each proof document in a node folder and uses shortcuts for shared children", () => {
+test("owns each why document in a node folder and uses shortcuts for shared children", () => {
   const files = markdownFiles(sampleRoot);
   const rootDocument = path.join(sampleRoot, "continuous_interval_consequences.md");
 
@@ -83,9 +83,9 @@ test("owns each proof document in a node folder and uses shortcuts for shared ch
   assert.equal(shortcuts.length, 2);
   for (const shortcutPath of shortcuts) {
     const shortcut = JSON.parse(readFileSync(shortcutPath, "utf8"));
-    assert.equal(shortcut.kind, "proof-shortcut");
+    assert.equal(shortcut.kind, "why-shortcut");
     assert.ok(existsSync(path.join(sampleRoot, shortcut.source)));
     assert.ok(existsSync(path.join(sampleRoot, shortcut.target)));
-    assert.equal(Object.hasOwn(shortcut, "reference"), false);
+    assert.equal(Object.hasOwn(shortcut, "recall"), false);
   }
 });

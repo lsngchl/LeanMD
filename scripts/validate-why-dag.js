@@ -11,7 +11,7 @@ const sampleArgument = process.argv
   .slice(2)
   .find((argument) => !argument.startsWith("--"));
 if (!sampleArgument) {
-  throw new Error("Usage: node scripts/validate-proof-dag.js <sample-directory> [--write]");
+  throw new Error("Usage: node scripts/validate-why-dag.js <sample-directory> [--write]");
 }
 
 const sampleDirectory = path.resolve(process.cwd(), sampleArgument);
@@ -19,7 +19,7 @@ const dependencyPath = path.join(sampleDirectory, ".leanmd", "dependencies.json"
 const shouldWrite = process.argv.includes("--write");
 
 function fail(message) {
-  throw new Error(`Invalid proof DAG: ${message}`);
+  throw new Error(`Invalid why DAG: ${message}`);
 }
 
 function normalizedRelativePath(value) {
@@ -48,10 +48,10 @@ function markdownFiles(directory) {
   });
 }
 
-function proofShortcutFiles(directory) {
+function whyShortcutFiles(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) return proofShortcutFiles(entryPath);
+    if (entry.isDirectory()) return whyShortcutFiles(entryPath);
     if (!entry.isFile() || entry.name !== "shortcut.leanmd.json") return [];
     return [normalizedRelativePath(path.relative(sampleDirectory, entryPath))];
   });
@@ -79,30 +79,30 @@ function markdownLinks(sourceDocument) {
 
 const documents = new Set(markdownFiles(sampleDirectory));
 const allLinks = [...documents].flatMap(markdownLinks);
-const proofLinks = allLinks.filter(({ role }) => role === "proof");
+const whyLinks = allLinks.filter(({ role }) => role === "why");
 
-for (const link of proofLinks) {
+for (const link of whyLinks) {
   if (!documents.has(link.target)) {
-    fail(`proof link leaves the document set: ${link.source} -> ${link.target}`);
+    fail(`why link leaves the document set: ${link.source} -> ${link.target}`);
   }
 }
 
-const proofEdgeKeys = new Set();
-const proofEdges = [];
-for (const link of proofLinks) {
+const whyEdgeKeys = new Set();
+const whyEdges = [];
+for (const link of whyLinks) {
   if (link.source === link.target) {
     fail(`self-dependency is not allowed: ${link.source}`);
   }
 
   const key = `${link.source}\u0000${link.target}`;
-  if (proofEdgeKeys.has(key)) continue;
-  proofEdgeKeys.add(key);
-  proofEdges.push({ from: link.source, to: link.target, kind: "proof" });
+  if (whyEdgeKeys.has(key)) continue;
+  whyEdgeKeys.add(key);
+  whyEdges.push({ from: link.source, to: link.target, kind: "why" });
 }
 
 const outgoing = new Map([...documents].map((document) => [document, []]));
 const incomingCount = new Map([...documents].map((document) => [document, 0]));
-for (const edge of proofEdges) {
+for (const edge of whyEdges) {
   outgoing.get(edge.from).push(edge.to);
   incomingCount.set(edge.to, incomingCount.get(edge.to) + 1);
 }
@@ -165,7 +165,7 @@ for (const document of documents) {
     fail(`document must live in its own same-named folder: ${document}`);
   }
 
-  const canonicalParents = proofEdges.filter(
+  const canonicalParents = whyEdges.filter(
     (edge) =>
       edge.to === document &&
       documentDirectory(edge.from) === parentDirectory(directory),
@@ -178,7 +178,7 @@ for (const document of documents) {
   }
 }
 
-proofEdges.sort(
+whyEdges.sort(
   (left, right) =>
     depth.get(left.from) - depth.get(right.from) ||
     left.from.localeCompare(right.from) ||
@@ -188,11 +188,11 @@ proofEdges.sort(
 let updatedSidecarCount = 0;
 for (const document of documents) {
   const sidecarPath = path.join(sampleDirectory, `${document}.leanmd.json`);
-  const proofTargets = [...new Set(outgoing.get(document))].sort((left, right) =>
+  const whyTargets = [...new Set(outgoing.get(document))].sort((left, right) =>
     left.localeCompare(right),
   );
   const generatedSidecar = `${JSON.stringify(
-    { document, proofLinks: proofTargets },
+    { document, whyLinks: whyTargets },
     null,
     2,
   )}\n`;
@@ -209,7 +209,7 @@ for (const document of documents) {
   }
 }
 
-const shortcutEdges = proofEdges.filter(
+const shortcutEdges = whyEdges.filter(
   (edge) =>
     documentDirectory(edge.from) !== parentDirectory(documentDirectory(edge.to)),
 );
@@ -222,13 +222,13 @@ for (const edge of shortcutEdges) {
   );
   const shortcutDocument = path.posix.join(shortcutDirectory, "shortcut.leanmd.json");
   if (expectedShortcutPaths.has(shortcutDocument)) {
-    fail(`proof shortcut path collision: ${shortcutDocument}`);
+    fail(`why shortcut path collision: ${shortcutDocument}`);
   }
   expectedShortcutPaths.add(shortcutDocument);
 
   const shortcutPath = path.join(sampleDirectory, shortcutDocument);
   const generatedShortcut = `${JSON.stringify(
-    { kind: "proof-shortcut", source: edge.from, target: edge.to },
+    { kind: "why-shortcut", source: edge.from, target: edge.to },
     null,
     2,
   )}\n`;
@@ -245,28 +245,28 @@ for (const edge of shortcutEdges) {
   }
 }
 
-const unexpectedShortcuts = proofShortcutFiles(sampleDirectory).filter(
+const unexpectedShortcuts = whyShortcutFiles(sampleDirectory).filter(
   (shortcut) => !expectedShortcutPaths.has(shortcut),
 );
 if (unexpectedShortcuts.length > 0) {
-  fail(`unexpected proof shortcuts: ${unexpectedShortcuts.join(", ")}`);
+  fail(`unexpected why shortcuts: ${unexpectedShortcuts.join(", ")}`);
 }
 
-const generated = `${JSON.stringify({ root, edges: proofEdges }, null, 2)}\n`;
+const generated = `${JSON.stringify({ root, edges: whyEdges }, null, 2)}\n`;
 if (shouldWrite) {
   console.log(
     updatedSidecarCount > 0
-      ? `Updated ${updatedSidecarCount} document proof sidecar files.`
-      : "Document proof sidecar files are already up to date.",
+      ? `Updated ${updatedSidecarCount} document why sidecar files.`
+      : "Document why sidecar files are already up to date.",
   );
   console.log(
     updatedShortcutCount > 0
-      ? `Updated ${updatedShortcutCount} proof shortcut files.`
-      : "Proof shortcut files are already up to date.",
+      ? `Updated ${updatedShortcutCount} why shortcut files.`
+      : "Why shortcut files are already up to date.",
   );
   if (!existsSync(dependencyPath) || readFileSync(dependencyPath, "utf8") !== generated) {
     writeFileSync(dependencyPath, generated, "utf8");
-    console.log("Updated dependencies.json from Markdown proof links.");
+    console.log("Updated dependencies.json from Markdown why links.");
   } else {
     console.log("dependencies.json is already up to date.");
   }
@@ -278,10 +278,10 @@ if (shouldWrite) {
 
 const sharedDocuments = [...incomingCount]
   .filter(([, count]) => count > 1)
-  .map(([document, count]) => `${document} (${count} incoming proof edges)`);
+  .map(([document, count]) => `${document} (${count} incoming why edges)`);
 
 console.log(
-  `Valid proof DAG: ${documents.size} documents, ${proofEdges.length} proof edges, root ${root}.`,
+  `Valid why DAG: ${documents.size} documents, ${whyEdges.length} why edges, root ${root}.`,
 );
 console.log(
   sharedDocuments.length > 0

@@ -1,6 +1,6 @@
 # 닫힌 구간에서 수렴 부분수열의 존재
 
-[루트 문서에서 사용한 닫힌 구간](../../continuous_interval_consequences.md "reference")
+[루트 문서에서 사용한 닫힌 구간](../../continuous_interval_consequences.md "recall")
 \([a,b]\) 안의 임의의 수열 \((x_n)\)은 구간 안의 어떤 점으로 수렴하는
 부분수열을 갖는다.
 

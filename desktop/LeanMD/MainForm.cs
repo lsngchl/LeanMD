@@ -10,7 +10,7 @@ internal sealed class MainForm : Form
     private const string ViewerHostName = "leanmd.local";
     private string? _markdownPath;
     private string? _lastMarkdownDirectory;
-    private readonly Action<string, MainForm> _openReferenceWindow;
+    private readonly Action<string, MainForm> _openRecallWindow;
     private readonly bool _persistWindowState;
     private readonly WebView2 _webView;
     private readonly List<string> _mapNodes = [];
@@ -33,24 +33,24 @@ internal sealed class MainForm : Form
 
     public MainForm(
         string? markdownPath,
-        Action<string, MainForm> openReferenceWindow,
-        MainForm? referenceSource = null)
+        Action<string, MainForm> openRecallWindow,
+        MainForm? recallSource = null)
     {
         _markdownPath = markdownPath;
         _lastMarkdownDirectory = markdownPath is null
             ? null
             : Path.GetDirectoryName(markdownPath);
-        _openReferenceWindow = openReferenceWindow;
-        _persistWindowState = referenceSource is null;
+        _openRecallWindow = openRecallWindow;
+        _persistWindowState = recallSource is null;
         Text = "LeanMD";
         MinimumSize = new Size(720, 540);
         BackColor = Color.FromArgb(243, 241, 236);
         ApplyAppIcon();
         Opacity = 0;
         ApplyInitialWindowState();
-        if (referenceSource is not null)
+        if (recallSource is not null)
         {
-            ApplyReferenceWindowBounds(referenceSource);
+            ApplyRecallWindowBounds(recallSource);
         }
 
         _webView = new WebView2
@@ -354,13 +354,13 @@ internal sealed class MainForm : Form
             if (currentDirectory is null) return;
 
             string linkedPath = Path.GetFullPath(Path.Combine(currentDirectory, relativePath));
-            bool isReference = role?.Equals(
-                "reference",
+            bool isRecall = role?.Equals(
+                "recall",
                 StringComparison.OrdinalIgnoreCase) == true;
             bool targetWasDiscovered = _mapNodes.Contains(
                 linkedPath,
                 StringComparer.OrdinalIgnoreCase);
-            if (isReference && !targetWasDiscovered)
+            if (isRecall && !targetWasDiscovered)
             {
                 if (!File.Exists(linkedPath))
                 {
@@ -373,7 +373,7 @@ internal sealed class MainForm : Form
                     return;
                 }
 
-                _openReferenceWindow(linkedPath, this);
+                _openRecallWindow(linkedPath, this);
                 return;
             }
 
@@ -668,7 +668,7 @@ internal sealed class MainForm : Form
         Bounds = new Rectangle(x, y, width, height);
     }
 
-    private void ApplyReferenceWindowBounds(MainForm sourceWindow)
+    private void ApplyRecallWindowBounds(MainForm sourceWindow)
     {
         Rectangle sourceBounds = sourceWindow.WindowState == FormWindowState.Normal
             ? sourceWindow.Bounds

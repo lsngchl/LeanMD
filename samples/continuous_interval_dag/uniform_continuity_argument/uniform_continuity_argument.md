@@ -1,6 +1,6 @@
 # 연속함수의 균등연속성 논증
 
-[루트 문서에서 정한 균등연속성의 정의](../continuous_interval_consequences.md "reference")를
+[루트 문서에서 정한 균등연속성의 정의](../continuous_interval_consequences.md "recall")를
 부정해 보자. 그러면 어떤 \(\varepsilon_0>0\)가 존재하여, 아무리 작은
 \(\delta>0\)를 주더라도 다음을 만족하는 \(x,y\in[a,b]\)를 찾을 수 있다.
 
@@ -19,14 +19,14 @@
 |f(x_n)-f(y_n)|\ge\varepsilon_0
 \]
 
-이다. [닫힌 구간의 부분수열 보조정리](../boundedness_argument/bolzano_weierstrass_subsequence/bolzano_weierstrass_subsequence.md "proof")를
+이다. [닫힌 구간의 부분수열 보조정리](../boundedness_argument/bolzano_weierstrass_subsequence/bolzano_weierstrass_subsequence.md "why")를
 \((x_n)\)에 적용하면 어떤 부분수열 \((x_{n_k})\)가 구간 안의 점 \(x\)로
 수렴한다.
 
 또한 \(|x_{n_k}-y_{n_k}|<1/n_k\to0\)이므로
-[서로 가까워지는 두 수열에 관한 보조정리](nearby_sequences_share_limit/nearby_sequences_share_limit.md "proof")에
+[서로 가까워지는 두 수열에 관한 보조정리](nearby_sequences_share_limit/nearby_sequences_share_limit.md "why")에
 의해 \(y_{n_k}\to x\)이다. 두 수열에
-[연속성의 수열 판정](../boundedness_argument/sequential_continuity/sequential_continuity.md "proof")을 적용하면
+[연속성의 수열 판정](../boundedness_argument/sequential_continuity/sequential_continuity.md "why")을 적용하면
 
 \[
 f(x_{n_k})\longrightarrow f(x),

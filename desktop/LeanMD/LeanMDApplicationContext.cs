@@ -6,17 +6,17 @@ internal sealed class LeanMDApplicationContext : ApplicationContext
 
     public LeanMDApplicationContext(string? markdownPath)
     {
-        ShowWindow(markdownPath, referenceSource: null);
+        ShowWindow(markdownPath, recallSource: null);
     }
 
-    private void OpenReferenceWindow(string markdownPath, MainForm referenceSource)
+    private void OpenRecallWindow(string markdownPath, MainForm recallSource)
     {
-        ShowWindow(markdownPath, referenceSource);
+        ShowWindow(markdownPath, recallSource);
     }
 
-    private void ShowWindow(string? markdownPath, MainForm? referenceSource)
+    private void ShowWindow(string? markdownPath, MainForm? recallSource)
     {
-        var window = new MainForm(markdownPath, OpenReferenceWindow, referenceSource);
+        var window = new MainForm(markdownPath, OpenRecallWindow, recallSource);
         _openWindowCount++;
         window.FormClosed += OnWindowClosed;
         window.Show();

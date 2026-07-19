@@ -7,12 +7,12 @@ A small, local-first Markdown viewer that renders LaTeX written with either
 
 - Viewer source: `index.html` and `src/`
 - Windows desktop wrapper and installer scripts: `desktop/LeanMD/`
-- Proof-DAG authoring rules and canonical sample: `samples/`
-- Proof-DAG validation and supporting scripts: `scripts/`
+- Why-DAG authoring rules and canonical sample: `samples/`
+- Why-DAG validation and supporting scripts: `scripts/`
 - Automated tests: `test/`
 
 The tracked package metadata, executable metadata, application manifest, and
-installer display version are kept in sync at `1.3.0`.
+installer display version are kept in sync at `1.3.1`.
 
 ## Features
 
@@ -24,41 +24,44 @@ installer display version are kept in sync at `1.3.0`.
 - KaTeX rendering with no remote font or script requests
 - File picker, drag and drop, light/dark theme, and print styles
 - In-app navigation for relative Markdown links and a visited-path exploration map
-- Undiscovered reference links open an independent viewer window and start a new map
+- Undiscovered recall links open an independent viewer window and start a new map
 - Recursive map layout that keeps sibling subtrees ordered as branches grow
 - Drag-to-pan map navigation with slider, button, fit, and wheel zoom controls
 - First-discovery-only map edges and a marker for the previously viewed document
 - Code spans and fenced code blocks are excluded from math rendering
 - Raw HTML in Markdown is disabled
 
-Use a standard Markdown link title to choose the navigation behavior. A
-`"reference"` link opens a new window only when its target has not been
-discovered on the current map; otherwise it reuses the current window. A
-`"proof"` link and an unlabelled Markdown link continue in the current window.
+Use a standard Markdown link title to express the question that following the
+link answers. A `"why"` link answers “Why does this hold?” by opening a more
+detailed argument. A `"recall"` link answers “What was this again?” by returning
+to a definition, notation, or earlier context. An undiscovered `"recall"` target
+opens in a new window and starts a new map; otherwise the current window is
+reused. A `"why"` link and an unlabelled Markdown link continue in the current
+window.
 
 ```md
-[Detailed proof](./details.md "proof")
-[Earlier definition](./definition.md "reference")
+[Why this holds](./details.md "why")
+[What this meant](./definition.md "recall")
 ```
 
-Every Markdown document in a proof-DAG sample has an adjacent
-`<document>.md.leanmd.json` sidecar containing only its outgoing `"proof"`
-links. The generated `.leanmd/dependencies.json` manifest combines those
-sidecars into the complete proof DAG. `"reference"` links remain navigation
-metadata in Markdown and are ignored by proof-DAG validation.
+Every Markdown document in a why-DAG sample has an adjacent
+`<document>.md.leanmd.json` sidecar containing only its outgoing `"why"` links.
+The generated `.leanmd/dependencies.json` manifest combines those sidecars into
+the complete why DAG. `"recall"` links remain navigation metadata in Markdown
+and are ignored by why-DAG validation.
 
 The sample directory itself is the root document's folder. Every non-root
-document lives in a same-named child folder of its canonical proof parent. If
+document lives in a same-named child folder of its canonical why parent. If
 another parent uses that document, the second location contains a portable
 `shortcut.leanmd.json` pointing to the canonical Markdown file instead of a
 duplicate. OS-specific `.lnk` and symbolic links are not required.
 
 Validate a sample, or regenerate its document sidecars and complete manifest
-after editing proof links, with:
+after editing why links, with:
 
 ```sh
-node scripts/validate-proof-dag.js samples/continuous_interval_dag
-node scripts/validate-proof-dag.js samples/continuous_interval_dag --write
+node scripts/validate-why-dag.js samples/continuous_interval_dag
+node scripts/validate-why-dag.js samples/continuous_interval_dag --write
 ```
 
 ## Run locally

@@ -28,7 +28,7 @@ y\in[a,b],\quad |x-y|<\delta
 1. \(f\)는 \([a,b]\)에서 유계이다.
 2. \(f\)는 \([a,b]\)에서 균등연속이다.
 
-두 결론은 각각 [유계성 논증](./boundedness_argument/boundedness_argument.md "proof")과
-[균등연속성 논증](./uniform_continuity_argument/uniform_continuity_argument.md "proof")에서
+두 결론은 각각 [유계성 논증](./boundedness_argument/boundedness_argument.md "why")과
+[균등연속성 논증](./uniform_continuity_argument/uniform_continuity_argument.md "why")에서
 증명한다. 논증의 모양은 다르지만, 둘 다 닫힌 구간에서 수렴 부분수열을
 선택하고 연속성을 수열의 극한에 적용한다는 같은 핵심 결과를 사용한다.
