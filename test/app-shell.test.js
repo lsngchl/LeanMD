@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
@@ -10,6 +10,14 @@ const stylesSource = readFileSync(
 );
 const desktopHost = readFileSync(
   new URL("../desktop/LeanMD/MainForm.cs", import.meta.url),
+  "utf8",
+);
+const desktopProgram = readFileSync(
+  new URL("../desktop/LeanMD/Program.cs", import.meta.url),
+  "utf8",
+);
+const desktopApplicationContext = readFileSync(
+  new URL("../desktop/LeanMD/LeanMDApplicationContext.cs", import.meta.url),
   "utf8",
 );
 
@@ -40,29 +48,25 @@ test("does not bundle a Markdown sample into the app", () => {
 
 test("opens relative Markdown links through the desktop host", () => {
   assert.match(appSource, /elements\.preview\.addEventListener\("click"/);
-  assert.match(appSource, /type: "open-markdown-link", href/);
+  assert.match(appSource, /link\.getAttribute\("title"\)/);
+  assert.match(appSource, /type: "open-markdown-link", href, role/);
   assert.match(desktopHost, /case "open-markdown-link":/);
-  assert.match(desktopHost, /OpenLinkedMarkdownAsync\(hrefElement\.GetString\(\)\)/);
+  assert.match(desktopHost, /OpenLinkedMarkdownAsync\(hrefElement\.GetString\(\), role\)/);
   assert.match(
     desktopHost,
     /Path\.GetFullPath\(Path\.Combine\(currentDirectory, relativePath\)\)/,
   );
 });
 
-test("the extrema sample links to Markdown files beside it", () => {
-  const sampleUrl = new URL(
-    "../samples/continuous_function_on_compact_interval_attains_extrema.md",
-    import.meta.url,
-  );
-  const sample = readFileSync(sampleUrl, "utf8");
-  const linkedFiles = [
-    ...sample.matchAll(/\]\((\.\/[^)#?]+\.(?:md|markdown))\)/giu),
-  ].map((match) => match[1]);
-
-  assert.ok(linkedFiles.length >= 2);
-  for (const href of linkedFiles) {
-    assert.ok(existsSync(new URL(href, sampleUrl)), `Missing sample link: ${href}`);
-  }
+test("opens only undiscovered reference Markdown links as independent windows", () => {
+  assert.match(desktopHost, /role\?\.Equals\(\s*"reference"/);
+  assert.match(desktopHost, /bool targetWasDiscovered = _mapNodes\.Contains/);
+  assert.match(desktopHost, /if \(isReference && !targetWasDiscovered\)/);
+  assert.match(desktopHost, /_openReferenceWindow\(linkedPath, this\)/);
+  assert.match(desktopHost, /ApplyReferenceWindowBounds\(referenceSource\)/);
+  assert.match(desktopProgram, /new LeanMDApplicationContext\(markdownPath\)/);
+  assert.match(desktopApplicationContext, /new MainForm\(markdownPath, OpenReferenceWindow/);
+  assert.match(desktopApplicationContext, /if \(_openWindowCount == 0\)/);
 });
 
 test("desktop drag and drop keeps the source file path in the host", () => {
@@ -114,6 +118,22 @@ test("toggles the map with M and closes it with Escape", () => {
   assert.doesNotMatch(appSource, /map(?:Button|CloseButton)\.focus\(\)/);
 });
 
+test("separates map reset from close and confirms before clearing the map", () => {
+  const closePosition = html.indexOf('id="mapCloseButton"');
+  const footerPosition = html.indexOf('<footer class="map-footer">');
+  const resetPosition = html.indexOf('id="mapResetButton"');
+
+  assert.ok(closePosition >= 0 && closePosition < footerPosition);
+  assert.ok(resetPosition > footerPosition);
+  assert.match(html, /id="mapResetDialog"/);
+  assert.match(html, /The current document will become the new starting point/);
+  assert.match(appSource, /mapResetDialog\.showModal\(\)/);
+  assert.match(
+    appSource,
+    /mapResetConfirmButton\.addEventListener\("click",[\s\S]*type: "reset-map"/,
+  );
+});
+
 test("pans the map by dragging and zooms without scrollbars", () => {
   assert.match(html, /id="mapZoomSlider"/);
   assert.match(html, /id="mapZoomOutButton"/);
@@ -127,8 +147,9 @@ test("pans the map by dragging and zooms without scrollbars", () => {
   assert.match(stylesSource, /\.map-viewport\.is-panning\s*{[^}]*cursor: grabbing;/s);
 });
 
-test("returns to the previous document with Backspace", () => {
+test("returns to the previous document with Backspace or comma", () => {
   assert.match(appSource, /event\.key === "Backspace"/);
+  assert.match(appSource, /event\.key === ","/);
   assert.match(appSource, /type: "go-back"/);
   assert.match(desktopHost, /Stack<string> _documentHistory/);
   assert.match(desktopHost, /case "go-back":/);
@@ -141,6 +162,7 @@ test("shows a keyboard shortcut guide from the top bar", () => {
   assert.match(html, /id="keyGuidePanel"/);
   assert.match(html, /<kbd>M<\/kbd>/);
   assert.match(html, /<kbd>Backspace<\/kbd>/);
+  assert.match(html, /<kbd>,<\/kbd>/);
   assert.match(html, /<kbd>Esc<\/kbd>/);
   assert.match(appSource, /function toggleKeyGuide\(\)/);
 });

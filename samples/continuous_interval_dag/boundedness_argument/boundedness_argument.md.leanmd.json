@@ -1,0 +1,7 @@
+{
+  "document": "boundedness_argument/boundedness_argument.md",
+  "proofLinks": [
+    "boundedness_argument/bolzano_weierstrass_subsequence/bolzano_weierstrass_subsequence.md",
+    "boundedness_argument/sequential_continuity/sequential_continuity.md"
+  ]
+}

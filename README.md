@@ -6,13 +6,12 @@ A small, local-first Markdown viewer that renders LaTeX written with either
 ## Workspace layout
 
 - Current development source: the workspace root
-- Shared Markdown examples: `samples/`
-- Large tree-layout test set: `samples/tree_layout_stress/00_tree_root.md`
-- Current official release folder: `release/LeanMD-1.2.0/`
-- Preserved previous releases: `release/LeanMD-1.0.0/`, `release/LeanMD-1.1.0/`
+- Proof-DAG authoring rules and canonical sample: `samples/`
+- Current official release folder: `release/LeanMD-1.3.0/`
+- Preserved previous releases: `release/LeanMD-1.0.0/`, `release/LeanMD-1.1.0/`, `release/LeanMD-1.2.0/`
 
 The current source, executable metadata, and installer display version are all
-kept in sync at `1.2.0`.
+kept in sync at `1.3.0`.
 
 ## Features
 
@@ -24,11 +23,42 @@ kept in sync at `1.2.0`.
 - KaTeX rendering with no remote font or script requests
 - File picker, drag and drop, light/dark theme, and print styles
 - In-app navigation for relative Markdown links and a visited-path exploration map
+- Undiscovered reference links open an independent viewer window and start a new map
 - Recursive map layout that keeps sibling subtrees ordered as branches grow
 - Drag-to-pan map navigation with slider, button, fit, and wheel zoom controls
 - First-discovery-only map edges and a marker for the previously viewed document
 - Code spans and fenced code blocks are excluded from math rendering
 - Raw HTML in Markdown is disabled
+
+Use a standard Markdown link title to choose the navigation behavior. A
+`"reference"` link opens a new window only when its target has not been
+discovered on the current map; otherwise it reuses the current window. A
+`"proof"` link and an unlabelled Markdown link continue in the current window.
+
+```md
+[Detailed proof](./details.md "proof")
+[Earlier definition](./definition.md "reference")
+```
+
+Every Markdown document in a proof-DAG sample has an adjacent
+`<document>.md.leanmd.json` sidecar containing only its outgoing `"proof"`
+links. The generated `.leanmd/dependencies.json` manifest combines those
+sidecars into the complete proof DAG. `"reference"` links remain navigation
+metadata in Markdown and are ignored by proof-DAG validation.
+
+The sample directory itself is the root document's folder. Every non-root
+document lives in a same-named child folder of its canonical proof parent. If
+another parent uses that document, the second location contains a portable
+`shortcut.leanmd.json` pointing to the canonical Markdown file instead of a
+duplicate. OS-specific `.lnk` and symbolic links are not required.
+
+Validate a sample, or regenerate its document sidecars and complete manifest
+after editing proof links, with:
+
+```sh
+node scripts/validate-proof-dag.js samples/continuous_interval_dag
+node scripts/validate-proof-dag.js samples/continuous_interval_dag --write
+```
 
 ## Run locally
 
@@ -53,10 +83,10 @@ The Windows desktop wrapper accepts a Markdown path as its first command-line
 argument and loads cacheable viewer assets in WebView2.
 
 ```powershell
-dotnet publish desktop/LeanMD/LeanMD.csproj -c Release -r win-x64 --self-contained false -o release/LeanMD-1.2.0
+dotnet publish desktop/LeanMD/LeanMD.csproj -c Release -r win-x64 --self-contained false -o release/LeanMD-1.3.0
 ```
 
-Run `release/LeanMD-1.2.0/Install-LeanMD.cmd` to install the app for the current user.
+Run `release/LeanMD-1.3.0/Install-LeanMD.cmd` to install the app for the current user.
 The installer registers LeanMD as an available handler for `.md` and `.markdown`,
 but does not open Windows Default Apps settings or change the existing default app.
 Administrator privileges are not required.

@@ -22,6 +22,6 @@ internal static class Program
             }
         }
 
-        Application.Run(new MainForm(markdownPath));
+        Application.Run(new LeanMDApplicationContext(markdownPath));
     }
 }

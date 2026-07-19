@@ -10,6 +10,8 @@ internal sealed class MainForm : Form
     private const string ViewerHostName = "leanmd.local";
     private string? _markdownPath;
     private string? _lastMarkdownDirectory;
+    private readonly Action<string, MainForm> _openReferenceWindow;
+    private readonly bool _persistWindowState;
     private readonly WebView2 _webView;
     private readonly List<string> _mapNodes = [];
     private readonly List<(string From, string To)> _mapEdges = [];
@@ -29,18 +31,27 @@ internal sealed class MainForm : Form
         History,
     }
 
-    public MainForm(string? markdownPath)
+    public MainForm(
+        string? markdownPath,
+        Action<string, MainForm> openReferenceWindow,
+        MainForm? referenceSource = null)
     {
         _markdownPath = markdownPath;
         _lastMarkdownDirectory = markdownPath is null
             ? null
             : Path.GetDirectoryName(markdownPath);
+        _openReferenceWindow = openReferenceWindow;
+        _persistWindowState = referenceSource is null;
         Text = "LeanMD";
         MinimumSize = new Size(720, 540);
         BackColor = Color.FromArgb(243, 241, 236);
         ApplyAppIcon();
         Opacity = 0;
         ApplyInitialWindowState();
+        if (referenceSource is not null)
+        {
+            ApplyReferenceWindowBounds(referenceSource);
+        }
 
         _webView = new WebView2
         {
@@ -180,7 +191,12 @@ internal sealed class MainForm : Form
                     if (message.RootElement.TryGetProperty("href", out JsonElement hrefElement) &&
                         hrefElement.ValueKind == JsonValueKind.String)
                     {
-                        await OpenLinkedMarkdownAsync(hrefElement.GetString());
+                        string? role =
+                            message.RootElement.TryGetProperty("role", out JsonElement roleElement) &&
+                            roleElement.ValueKind == JsonValueKind.String
+                                ? roleElement.GetString()
+                                : null;
+                        await OpenLinkedMarkdownAsync(hrefElement.GetString(), role);
                     }
                     break;
                 case "open-dropped-file":
@@ -311,7 +327,7 @@ internal sealed class MainForm : Form
         }
     }
 
-    private async Task OpenLinkedMarkdownAsync(string? href)
+    private async Task OpenLinkedMarkdownAsync(string? href, string? role)
     {
         if (_markdownPath is null || string.IsNullOrWhiteSpace(href)) return;
 
@@ -338,6 +354,29 @@ internal sealed class MainForm : Form
             if (currentDirectory is null) return;
 
             string linkedPath = Path.GetFullPath(Path.Combine(currentDirectory, relativePath));
+            bool isReference = role?.Equals(
+                "reference",
+                StringComparison.OrdinalIgnoreCase) == true;
+            bool targetWasDiscovered = _mapNodes.Contains(
+                linkedPath,
+                StringComparer.OrdinalIgnoreCase);
+            if (isReference && !targetWasDiscovered)
+            {
+                if (!File.Exists(linkedPath))
+                {
+                    MessageBox.Show(
+                        this,
+                        $"The Markdown file was not found:\n{linkedPath}",
+                        "LeanMD",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
+                _openReferenceWindow(linkedPath, this);
+                return;
+            }
+
             await OpenMarkdownPathAsync(
                 linkedPath,
                 reason: OpenReason.Link,
@@ -629,8 +668,40 @@ internal sealed class MainForm : Form
         Bounds = new Rectangle(x, y, width, height);
     }
 
+    private void ApplyReferenceWindowBounds(MainForm sourceWindow)
+    {
+        Rectangle sourceBounds = sourceWindow.WindowState == FormWindowState.Normal
+            ? sourceWindow.Bounds
+            : sourceWindow.RestoreBounds;
+        Rectangle workingArea = Screen.FromRectangle(sourceBounds).WorkingArea;
+        int width = Math.Clamp(sourceBounds.Width, MinimumSize.Width, workingArea.Width);
+        int height = Math.Clamp(sourceBounds.Height, MinimumSize.Height, workingArea.Height);
+        const int offset = 36;
+        int x = sourceBounds.Left + offset;
+        int y = sourceBounds.Top + offset;
+
+        if (x + width > workingArea.Right)
+        {
+            x = Math.Max(workingArea.Left, sourceBounds.Left - offset);
+        }
+        if (y + height > workingArea.Bottom)
+        {
+            y = Math.Max(workingArea.Top, sourceBounds.Top - offset);
+        }
+
+        WindowState = FormWindowState.Normal;
+        StartPosition = FormStartPosition.Manual;
+        Bounds = new Rectangle(
+            Math.Clamp(x, workingArea.Left, workingArea.Right - width),
+            Math.Clamp(y, workingArea.Top, workingArea.Bottom - height),
+            width,
+            height);
+    }
+
     private void OnFormClosing(object? sender, FormClosingEventArgs eventArgs)
     {
+        if (!_persistWindowState) return;
+
         Rectangle boundsToSave = WindowState == FormWindowState.Normal
             ? Bounds
             : RestoreBounds;

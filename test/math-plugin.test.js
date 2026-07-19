@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import katex from "katex";
 import MarkdownIt from "markdown-it";
@@ -95,20 +94,4 @@ test("preserves an unmatched inline opening delimiter", () => {
 
   assert.match(html, /Unfinished \\\(x\+1/);
   assert.doesNotMatch(html, /class="math-inline"/);
-});
-
-test("renders the compactness proof fixture end to end", () => {
-  const samplePath = new URL(
-    "../samples/closed_bounded_interval_is_compact.md",
-    import.meta.url,
-  );
-  const source = readFileSync(samplePath, "utf8");
-  const html = createRenderer().render(source);
-  const inlineCount = (html.match(/class="math-inline"/g) ?? []).length;
-  const displayCount = (html.match(/class="math-display"/g) ?? []).length;
-
-  assert.ok(inlineCount >= 20, `expected at least 20 inline equations, got ${inlineCount}`);
-  assert.ok(displayCount >= 5, `expected at least 5 display equations, got ${displayCount}`);
-  assert.match(html, /<code>\\\(not mathematics\\\)<\/code>/);
-  assert.match(html, /\\\[This should not be rendered as display mathematics\.\\\]/);
 });

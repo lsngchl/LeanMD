@@ -12,6 +12,9 @@
   --accent-soft: #e4f0ec;
   --previous: #a15c16;
   --previous-soft: #fff0dc;
+  --danger: #a13e36;
+  --danger-fill: #a13e36;
+  --danger-soft: #f8e7e3;
   --code-bg: #f1f0eb;
   --quote-bg: #f4f8f6;
   --shadow: 0 20px 50px rgb(38 44 42 / 8%);
@@ -37,6 +40,9 @@
   --accent-soft: #1c3932;
   --previous: #efad68;
   --previous-soft: #3a291c;
+  --danger: #ff9a8c;
+  --danger-fill: #a7473d;
+  --danger-soft: #40241f;
   --code-bg: #232a28;
   --quote-bg: #1c2925;
   --shadow: 0 24px 70px rgb(0 0 0 / 28%);
@@ -151,7 +157,8 @@ a:focus-visible {
 }
 
 .quiet-button:disabled,
-.map-action-button:disabled {
+.map-action-button:disabled,
+.map-reset-button:disabled {
   cursor: default;
   opacity: 0.42;
 }
@@ -244,7 +251,7 @@ a:focus-visible {
 
 .key-guide-list > div {
   display: grid;
-  grid-template-columns: 112px 1fr;
+  grid-template-columns: 126px 1fr;
   align-items: center;
   gap: 12px;
   padding: 9px 17px;
@@ -871,6 +878,116 @@ a:focus-visible {
   font-size: 0.72rem;
 }
 
+.map-footer-info {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 16px;
+}
+
+.map-footer-info span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-reset-button {
+  height: 30px;
+  flex: 0 0 auto;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--danger) 42%, var(--line));
+  border-radius: 8px;
+  color: var(--danger);
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.map-reset-button:hover:not(:disabled) {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.map-reset-dialog {
+  width: min(430px, calc(100vw - 40px));
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 28px 90px rgb(0 0 0 / 28%);
+}
+
+.map-reset-dialog::backdrop {
+  background: rgb(12 18 16 / 52%);
+  backdrop-filter: blur(4px);
+}
+
+.map-reset-dialog form {
+  padding: 24px;
+}
+
+.map-reset-eyebrow {
+  margin: 0 0 5px;
+  color: var(--danger);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.map-reset-dialog h3 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.35rem;
+}
+
+.map-reset-dialog #mapResetDescription {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.65;
+}
+
+.map-reset-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 22px;
+}
+
+.map-dialog-cancel-button,
+.map-dialog-confirm-button {
+  min-height: 36px;
+  padding: 7px 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.map-dialog-cancel-button {
+  color: var(--ink);
+  background: var(--surface-muted);
+}
+
+.map-dialog-confirm-button {
+  border-color: var(--danger-fill);
+  color: #fff;
+  background: var(--danger-fill);
+}
+
+.map-dialog-cancel-button:hover {
+  border-color: var(--line-strong);
+  background: var(--accent-soft);
+}
+
+.map-dialog-confirm-button:hover {
+  filter: brightness(0.93);
+}
+
 .map-zoom-controls {
   display: flex;
   flex: 0 0 auto;
@@ -1011,6 +1128,14 @@ noscript {
     flex-direction: column;
     gap: 7px;
     padding: 9px 12px 11px;
+  }
+
+  .map-footer-info {
+    justify-content: space-between;
+  }
+
+  .map-footer-info span {
+    display: none;
   }
 
   .map-zoom-controls {

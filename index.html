@@ -76,7 +76,7 @@
           <dd>Open or close the exploration map</dd>
         </div>
         <div>
-          <dt><kbd>Backspace</kbd></dt>
+          <dt><kbd>Backspace</kbd><span>/</span><kbd>,</kbd></dt>
           <dd>Return to the previous document</dd>
         </div>
         <div>
@@ -154,9 +154,6 @@
             <h2 id="mapTitle">Paths you have followed</h2>
           </div>
           <div class="map-actions">
-            <button id="mapResetButton" class="map-action-button" type="button">
-              Reset
-            </button>
             <button id="mapCloseButton" class="map-action-button" type="button">
               Close
             </button>
@@ -191,7 +188,18 @@
         </div>
 
         <footer class="map-footer">
-          <span>Unvisited Markdown files stay hidden · Drag to move · Mouse wheel to zoom</span>
+          <div class="map-footer-info">
+            <button
+              id="mapResetButton"
+              class="map-reset-button"
+              type="button"
+              aria-haspopup="dialog"
+              aria-controls="mapResetDialog"
+            >
+              Reset map
+            </button>
+            <span>Unvisited Markdown files stay hidden · Drag to move · Mouse wheel to zoom</span>
+          </div>
           <div class="map-zoom-controls" aria-label="Map zoom controls">
             <button
               id="mapZoomOutButton"
@@ -229,6 +237,36 @@
             </button>
           </div>
         </footer>
+
+        <dialog
+          id="mapResetDialog"
+          class="map-reset-dialog"
+          aria-labelledby="mapResetTitle"
+          aria-describedby="mapResetDescription"
+        >
+          <form method="dialog">
+            <p class="map-reset-eyebrow">Exploration map</p>
+            <h3 id="mapResetTitle">Reset this map?</h3>
+            <p id="mapResetDescription">
+              All discovered documents and paths will be removed from this window's map.
+              The current document will become the new starting point. Your Markdown files
+              will not be changed.
+            </p>
+            <div class="map-reset-dialog-actions">
+              <button class="map-dialog-cancel-button" type="submit" value="cancel" autofocus>
+                Cancel
+              </button>
+              <button
+                id="mapResetConfirmButton"
+                class="map-dialog-confirm-button"
+                type="submit"
+                value="confirm"
+              >
+                Reset map
+              </button>
+            </div>
+          </form>
+        </dialog>
       </section>
     </div>
 

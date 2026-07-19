@@ -1,0 +1,7 @@
+{
+  "document": "continuous_interval_consequences.md",
+  "proofLinks": [
+    "boundedness_argument/boundedness_argument.md",
+    "uniform_continuity_argument/uniform_continuity_argument.md"
+  ]
+}

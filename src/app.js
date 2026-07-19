@@ -20,6 +20,8 @@ const elements = {
   mapNodeLayer: document.querySelector("#mapNodeLayer"),
   mapOverlay: document.querySelector("#mapOverlay"),
   mapResetButton: document.querySelector("#mapResetButton"),
+  mapResetConfirmButton: document.querySelector("#mapResetConfirmButton"),
+  mapResetDialog: document.querySelector("#mapResetDialog"),
   mapSurface: document.querySelector("#mapSurface"),
   mapViewport: document.querySelector("#mapViewport"),
   mapZoomFitButton: document.querySelector("#mapZoomFitButton"),
@@ -350,6 +352,7 @@ function openMap() {
 }
 
 function closeMap() {
+  if (elements.mapResetDialog.open) elements.mapResetDialog.close();
   if (
     mapPanPointer &&
     elements.mapViewport.hasPointerCapture(mapPanPointer.id)
@@ -553,12 +556,16 @@ elements.preview.addEventListener("click", (event) => {
   if (!isRelativeMarkdownLink(href)) return;
 
   event.preventDefault();
-  webViewHost.postMessage({ type: "open-markdown-link", href });
+  const role = link.getAttribute("title")?.trim().toLowerCase() ?? "";
+  webViewHost.postMessage({ type: "open-markdown-link", href, role });
 });
 
 elements.mapButton.addEventListener("click", toggleMap);
 elements.mapCloseButton.addEventListener("click", closeMap);
 elements.mapResetButton.addEventListener("click", () => {
+  if (!elements.mapResetButton.disabled) elements.mapResetDialog.showModal();
+});
+elements.mapResetConfirmButton.addEventListener("click", () => {
   webViewHost?.postMessage({ type: "reset-map" });
 });
 elements.mapOverlay.addEventListener("click", (event) => {
@@ -615,6 +622,8 @@ elements.themeButton.addEventListener("click", () => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (elements.mapResetDialog.open) return;
+
   if (event.key === "Escape" && !elements.keyGuidePanel.hidden) {
     event.preventDefault();
     closeKeyGuide();
@@ -643,7 +652,10 @@ document.addEventListener("keydown", (event) => {
   if (
     webViewHost &&
     !event.repeat &&
-    event.key === "Backspace" &&
+    (event.key === "Backspace" || event.key === ",") &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.altKey &&
     elements.keyGuidePanel.hidden &&
     !isEditableTarget(event.target)
   ) {
