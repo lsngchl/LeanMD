@@ -5,13 +5,14 @@ A small, local-first Markdown viewer that renders LaTeX written with either
 
 ## Workspace layout
 
-- Current development source: the workspace root
+- Viewer source: `index.html` and `src/`
+- Windows desktop wrapper and installer scripts: `desktop/LeanMD/`
 - Proof-DAG authoring rules and canonical sample: `samples/`
-- Current official release folder: `release/LeanMD-1.3.0/`
-- Preserved previous releases: `release/LeanMD-1.0.0/`, `release/LeanMD-1.1.0/`, `release/LeanMD-1.2.0/`
+- Proof-DAG validation and supporting scripts: `scripts/`
+- Automated tests: `test/`
 
-The current source, executable metadata, and installer display version are all
-kept in sync at `1.3.0`.
+The tracked package metadata, executable metadata, application manifest, and
+installer display version are kept in sync at `1.3.0`.
 
 ## Features
 
@@ -83,10 +84,11 @@ The Windows desktop wrapper accepts a Markdown path as its first command-line
 argument and loads cacheable viewer assets in WebView2.
 
 ```powershell
-dotnet publish desktop/LeanMD/LeanMD.csproj -c Release -r win-x64 --self-contained false -o release/LeanMD-1.3.0
+dotnet publish desktop/LeanMD/LeanMD.csproj -c Release -r win-x64 --self-contained false
 ```
 
-Run `release/LeanMD-1.3.0/Install-LeanMD.cmd` to install the app for the current user.
+After publishing, run `Install-LeanMD.cmd` from the publish output directory to
+install the app for the current user.
 The installer registers LeanMD as an available handler for `.md` and `.markdown`,
 but does not open Windows Default Apps settings or change the existing default app.
 Administrator privileges are not required.
