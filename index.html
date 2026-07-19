@@ -16,6 +16,28 @@
       </div>
 
       <div class="topbar-actions">
+        <button
+          id="mapButton"
+          class="quiet-button map-button"
+          type="button"
+          aria-controls="mapOverlay"
+          aria-expanded="false"
+          aria-keyshortcuts="M"
+          title="Toggle map (M)"
+          disabled
+        >
+          <span>Map</span>
+          <span id="mapCount" class="map-count" aria-hidden="true">0</span>
+        </button>
+        <button
+          id="keyGuideButton"
+          class="quiet-button"
+          type="button"
+          aria-controls="keyGuidePanel"
+          aria-expanded="false"
+        >
+          Keys
+        </button>
         <button id="themeButton" class="quiet-button" type="button">Dark</button>
         <label id="openButton" class="open-button" for="fileInput">Open .md</label>
         <input
@@ -27,15 +49,53 @@
       </div>
     </header>
 
+    <aside
+      id="keyGuidePanel"
+      class="key-guide"
+      role="dialog"
+      aria-labelledby="keyGuideTitle"
+      hidden
+    >
+      <div class="key-guide-header">
+        <div>
+          <p class="key-guide-eyebrow">Keyboard guide</p>
+          <h2 id="keyGuideTitle">Shortcuts</h2>
+        </div>
+        <button
+          id="keyGuideCloseButton"
+          class="key-guide-close"
+          type="button"
+          aria-label="Close keyboard guide"
+        >
+          ×
+        </button>
+      </div>
+      <dl class="key-guide-list">
+        <div>
+          <dt><kbd>M</kbd></dt>
+          <dd>Open or close the exploration map</dd>
+        </div>
+        <div>
+          <dt><kbd>Backspace</kbd></dt>
+          <dd>Return to the previous document</dd>
+        </div>
+        <div>
+          <dt><kbd>Esc</kbd></dt>
+          <dd>Close the map or this guide</dd>
+        </div>
+        <div>
+          <dt><kbd>Ctrl</kbd><span>+</span><kbd>O</kbd></dt>
+          <dd>Open a Markdown file</dd>
+        </div>
+      </dl>
+    </aside>
+
     <main class="app-shell">
       <section class="document-card" aria-label="Markdown document viewer">
         <div class="document-toolbar">
           <div class="document-identity">
             <p id="documentName" class="document-name">No document open</p>
           </div>
-          <button id="sampleButton" class="text-button" type="button">
-            Reload sample
-          </button>
         </div>
 
         <div class="document-content">
@@ -79,6 +139,97 @@
         <strong>Drop a Markdown file</strong>
         <span>Release to open it.</span>
       </div>
+    </div>
+
+    <div id="mapOverlay" class="map-overlay" hidden>
+      <section
+        class="map-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mapTitle"
+      >
+        <header class="map-header">
+          <div>
+            <p class="map-eyebrow">Exploration map</p>
+            <h2 id="mapTitle">Paths you have followed</h2>
+          </div>
+          <div class="map-actions">
+            <button id="mapResetButton" class="map-action-button" type="button">
+              Reset
+            </button>
+            <button id="mapCloseButton" class="map-action-button" type="button">
+              Close
+            </button>
+          </div>
+        </header>
+
+        <div id="mapViewport" class="map-viewport">
+          <div id="mapSurface" class="map-surface">
+            <svg
+              id="mapEdges"
+              class="map-edges"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <defs>
+                <marker
+                  id="mapArrow"
+                  viewBox="0 0 10 10"
+                  refX="8"
+                  refY="5"
+                  markerWidth="7"
+                  markerHeight="7"
+                  orient="auto-start-reverse"
+                >
+                  <path d="M 0 0 L 10 5 L 0 10 z" />
+                </marker>
+              </defs>
+              <g id="mapEdgeLayer"></g>
+            </svg>
+            <div id="mapNodeLayer" class="map-node-layer"></div>
+          </div>
+        </div>
+
+        <footer class="map-footer">
+          <span>Unvisited Markdown files stay hidden · Drag to move · Mouse wheel to zoom</span>
+          <div class="map-zoom-controls" aria-label="Map zoom controls">
+            <button
+              id="mapZoomOutButton"
+              class="map-zoom-button"
+              type="button"
+              aria-label="Zoom out"
+              title="Zoom out"
+            >
+              −
+            </button>
+            <input
+              id="mapZoomSlider"
+              class="map-zoom-slider"
+              type="range"
+              min="20"
+              max="200"
+              step="5"
+              value="100"
+              aria-label="Map zoom"
+            />
+            <button
+              id="mapZoomInButton"
+              class="map-zoom-button"
+              type="button"
+              aria-label="Zoom in"
+              title="Zoom in"
+            >
+              +
+            </button>
+            <output id="mapZoomValue" class="map-zoom-value" for="mapZoomSlider">
+              100%
+            </output>
+            <button id="mapZoomFitButton" class="map-fit-button" type="button">
+              Fit
+            </button>
+          </div>
+        </footer>
+      </section>
     </div>
 
     <p id="status" class="visually-hidden" role="status" aria-live="polite"></p>

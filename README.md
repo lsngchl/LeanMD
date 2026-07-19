@@ -7,11 +7,12 @@ A small, local-first Markdown viewer that renders LaTeX written with either
 
 - Current development source: the workspace root
 - Shared Markdown examples: `samples/`
-- Official release folder: `release/LeanMD-1.0.0/`
+- Large tree-layout test set: `samples/tree_layout_stress/00_tree_root.md`
+- Current official release folder: `release/LeanMD-1.1.0/`
+- Preserved previous release: `release/LeanMD-1.0.0/`
 
-`LeanMD-1.0.0` is a release-folder label. The preserved executable and the
-current development source still carry the internal base version 0.2.8 until a
-new development version is assigned.
+The current source, executable metadata, and installer display version are all
+kept in sync at `1.1.0`.
 
 ## Features
 
@@ -22,6 +23,9 @@ new development version is assigned.
 - Display mathematics with `$$...$$`
 - KaTeX rendering with no remote font or script requests
 - File picker, drag and drop, light/dark theme, and print styles
+- In-app navigation for relative Markdown links and a visited-path exploration map
+- Recursive map layout that keeps sibling subtrees ordered as branches grow
+- Drag-to-pan map navigation with slider, button, fit, and wheel zoom controls
 - Code spans and fenced code blocks are excluded from math rendering
 - Raw HTML in Markdown is disabled
 
@@ -48,10 +52,10 @@ The Windows desktop wrapper accepts a Markdown path as its first command-line
 argument and loads cacheable viewer assets in WebView2.
 
 ```powershell
-dotnet publish desktop/LeanMD/LeanMD.csproj -c Release -r win-x64 --self-contained false -o release/LeanMD-0.2.8
+dotnet publish desktop/LeanMD/LeanMD.csproj -c Release -r win-x64 --self-contained false -o release/LeanMD-1.1.0
 ```
 
-Run `release/LeanMD-0.2.8/Install-LeanMD.cmd` to install the app for the current user.
+Run `release/LeanMD-1.1.0/Install-LeanMD.cmd` to install the app for the current user.
 The installer registers LeanMD as an available handler for `.md` and `.markdown`,
 but does not open Windows Default Apps settings or change the existing default app.
 Administrator privileges are not required.

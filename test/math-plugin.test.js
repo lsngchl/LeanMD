@@ -97,7 +97,7 @@ test("preserves an unmatched inline opening delimiter", () => {
   assert.doesNotMatch(html, /class="math-inline"/);
 });
 
-test("renders the bundled compactness proof end to end", () => {
+test("renders the compactness proof fixture end to end", () => {
   const samplePath = new URL(
     "../samples/closed_bounded_interval_is_compact.md",
     import.meta.url,

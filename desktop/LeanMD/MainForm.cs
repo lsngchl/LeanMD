@@ -9,14 +9,31 @@ internal sealed class MainForm : Form
 {
     private const string ViewerHostName = "leanmd.local";
     private string? _markdownPath;
+    private string? _lastMarkdownDirectory;
     private readonly WebView2 _webView;
+    private readonly List<string> _mapNodes = [];
+    private readonly List<(string From, string To)> _mapEdges = [];
+    private readonly Stack<string> _documentHistory = new();
+    private string? _mapRootPath;
+    private int _mapSessionId;
     private Task<string>? _initialMarkdownReadTask;
     private bool _initialContentSent;
     private bool _windowRevealed;
 
+    private enum OpenReason
+    {
+        Direct,
+        Link,
+        Map,
+        History,
+    }
+
     public MainForm(string? markdownPath)
     {
         _markdownPath = markdownPath;
+        _lastMarkdownDirectory = markdownPath is null
+            ? null
+            : Path.GetDirectoryName(markdownPath);
         Text = "LeanMD";
         MinimumSize = new Size(720, 540);
         BackColor = Color.FromArgb(243, 241, 236);
@@ -158,6 +175,32 @@ internal sealed class MainForm : Form
                 case "open-file-dialog":
                     await ShowOpenMarkdownDialogAsync();
                     break;
+                case "open-markdown-link":
+                    if (message.RootElement.TryGetProperty("href", out JsonElement hrefElement) &&
+                        hrefElement.ValueKind == JsonValueKind.String)
+                    {
+                        await OpenLinkedMarkdownAsync(hrefElement.GetString());
+                    }
+                    break;
+                case "open-dropped-file":
+                    await OpenDroppedMarkdownAsync(eventArgs.AdditionalObjects);
+                    break;
+                case "open-map-node":
+                    if (message.RootElement.TryGetProperty("id", out JsonElement idElement) &&
+                        idElement.ValueKind == JsonValueKind.String)
+                    {
+                        await OpenMapNodeAsync(idElement.GetString());
+                    }
+                    break;
+                case "go-back":
+                    await GoBackAsync();
+                    break;
+                case "reset-map":
+                    if (_markdownPath is not null)
+                    {
+                        StartMap(_markdownPath);
+                    }
+                    break;
             }
         }
         catch
@@ -198,7 +241,7 @@ internal sealed class MainForm : Form
         };
 
         string? currentDirectory = _markdownPath is null
-            ? null
+            ? _lastMarkdownDirectory
             : Path.GetDirectoryName(_markdownPath);
         if (currentDirectory is not null && Directory.Exists(currentDirectory))
         {
@@ -213,8 +256,12 @@ internal sealed class MainForm : Form
     private async Task OpenMarkdownPathAsync(
         string markdownPath,
         Task<string>? sourceTask = null,
-        bool showEmptyStateOnFailure = false)
+        bool showEmptyStateOnFailure = false,
+        OpenReason reason = OpenReason.Direct,
+        string? linkSourcePath = null)
     {
+        string? previousPath = _markdownPath;
+
         if (sourceTask is null && !File.Exists(markdownPath))
         {
             MessageBox.Show(
@@ -235,14 +282,18 @@ internal sealed class MainForm : Form
             string source = sourceTask is not null
                 ? await sourceTask
                 : await File.ReadAllTextAsync(markdownPath);
+            markdownPath = Path.GetFullPath(markdownPath);
             _markdownPath = markdownPath;
+            _lastMarkdownDirectory = Path.GetDirectoryName(markdownPath);
             _initialMarkdownReadTask = null;
+            UpdateHistoryAfterOpen(reason, previousPath, markdownPath);
             PostViewerMessage(new
             {
                 type = "open-markdown",
                 source,
                 name = Path.GetFileName(markdownPath),
             });
+            UpdateMapAfterOpen(markdownPath, reason, linkSourcePath);
         }
         catch (Exception exception)
         {
@@ -257,6 +308,202 @@ internal sealed class MainForm : Form
                 PostViewerMessage(new { type = "show-empty-state" });
             }
         }
+    }
+
+    private async Task OpenLinkedMarkdownAsync(string? href)
+    {
+        if (_markdownPath is null || string.IsNullOrWhiteSpace(href)) return;
+
+        string sourcePath = _markdownPath;
+
+        int suffixStart = href.IndexOfAny(['?', '#']);
+        string encodedPath = suffixStart >= 0 ? href[..suffixStart] : href;
+        if (string.IsNullOrWhiteSpace(encodedPath)) return;
+
+        try
+        {
+            string relativePath = Uri.UnescapeDataString(encodedPath)
+                .Replace('/', Path.DirectorySeparatorChar);
+            if (Path.IsPathRooted(relativePath)) return;
+
+            string extension = Path.GetExtension(relativePath);
+            if (!extension.Equals(".md", StringComparison.OrdinalIgnoreCase) &&
+                !extension.Equals(".markdown", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            string? currentDirectory = Path.GetDirectoryName(_markdownPath);
+            if (currentDirectory is null) return;
+
+            string linkedPath = Path.GetFullPath(Path.Combine(currentDirectory, relativePath));
+            await OpenMarkdownPathAsync(
+                linkedPath,
+                reason: OpenReason.Link,
+                linkSourcePath: sourcePath);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or NotSupportedException or PathTooLongException or UriFormatException)
+        {
+            // Ignore malformed local links and keep the current document open.
+        }
+    }
+
+    private async Task OpenMapNodeAsync(string? nodeId)
+    {
+        if (nodeId is null || !_mapNodes.Contains(nodeId, StringComparer.OrdinalIgnoreCase)) return;
+
+        await OpenMarkdownPathAsync(nodeId, reason: OpenReason.Map);
+    }
+
+    private async Task GoBackAsync()
+    {
+        while (_documentHistory.Count > 0)
+        {
+            string previousPath = _documentHistory.Pop();
+            if (!File.Exists(previousPath)) continue;
+
+            await OpenMarkdownPathAsync(previousPath, reason: OpenReason.History);
+            return;
+        }
+    }
+
+    private void UpdateHistoryAfterOpen(
+        OpenReason reason,
+        string? previousPath,
+        string markdownPath)
+    {
+        if (reason == OpenReason.Direct)
+        {
+            _documentHistory.Clear();
+            return;
+        }
+
+        if ((reason == OpenReason.Link || reason == OpenReason.Map) &&
+            previousPath is not null &&
+            !previousPath.Equals(markdownPath, StringComparison.OrdinalIgnoreCase))
+        {
+            _documentHistory.Push(previousPath);
+        }
+    }
+
+    private void UpdateMapAfterOpen(
+        string markdownPath,
+        OpenReason reason,
+        string? linkSourcePath)
+    {
+        switch (reason)
+        {
+            case OpenReason.Direct:
+                StartMap(markdownPath);
+                return;
+            case OpenReason.Link when linkSourcePath is not null:
+                DiscoverMapLink(linkSourcePath, markdownPath);
+                return;
+            case OpenReason.Map:
+            case OpenReason.History:
+                PublishMapState();
+                return;
+        }
+    }
+
+    private void StartMap(string rootPath)
+    {
+        _mapSessionId++;
+        _mapRootPath = rootPath;
+        _documentHistory.Clear();
+        _mapNodes.Clear();
+        _mapEdges.Clear();
+        _mapNodes.Add(rootPath);
+        PublishMapState();
+    }
+
+    private void ClearMap()
+    {
+        _mapSessionId++;
+        _mapRootPath = null;
+        _documentHistory.Clear();
+        _mapNodes.Clear();
+        _mapEdges.Clear();
+        PublishMapState();
+    }
+
+    private void DiscoverMapLink(string sourcePath, string targetPath)
+    {
+        if (_mapRootPath is null ||
+            !_mapNodes.Contains(sourcePath, StringComparer.OrdinalIgnoreCase))
+        {
+            _mapSessionId++;
+            _mapRootPath = sourcePath;
+            _mapNodes.Clear();
+            _mapEdges.Clear();
+            _mapNodes.Add(sourcePath);
+        }
+
+        if (!_mapNodes.Contains(targetPath, StringComparer.OrdinalIgnoreCase))
+        {
+            _mapNodes.Add(targetPath);
+        }
+
+        if (!sourcePath.Equals(targetPath, StringComparison.OrdinalIgnoreCase) &&
+            !_mapEdges.Any(edge =>
+                edge.From.Equals(sourcePath, StringComparison.OrdinalIgnoreCase) &&
+                edge.To.Equals(targetPath, StringComparison.OrdinalIgnoreCase)))
+        {
+            _mapEdges.Add((sourcePath, targetPath));
+        }
+
+        PublishMapState();
+    }
+
+    private void PublishMapState()
+    {
+        string? rootDirectory = _mapRootPath is null
+            ? null
+            : Path.GetDirectoryName(_mapRootPath);
+
+        PostViewerMessage(new
+        {
+            type = "map-state",
+            sessionId = _mapSessionId,
+            root = _mapRootPath,
+            current = _markdownPath,
+            nodes = _mapNodes.Select((path, order) => new
+            {
+                id = path,
+                label = Path.GetFileNameWithoutExtension(path).Replace('_', ' '),
+                detail = path.Equals(_mapRootPath, StringComparison.OrdinalIgnoreCase)
+                    ? "Starting document"
+                    : rootDirectory is null
+                        ? Path.GetFileName(path)
+                        : Path.GetRelativePath(rootDirectory, path).Replace('\\', '/'),
+                order,
+            }),
+            edges = _mapEdges.Select(edge => new
+            {
+                from = edge.From,
+                to = edge.To,
+            }),
+        });
+    }
+
+    private async Task OpenDroppedMarkdownAsync(IReadOnlyList<object> additionalObjects)
+    {
+        if (additionalObjects.Count != 1 ||
+            additionalObjects[0] is not CoreWebView2File droppedFile)
+        {
+            return;
+        }
+
+        string markdownPath = droppedFile.Path;
+        string extension = Path.GetExtension(markdownPath);
+        if (!extension.Equals(".md", StringComparison.OrdinalIgnoreCase) &&
+            !extension.Equals(".markdown", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        await OpenMarkdownPathAsync(Path.GetFullPath(markdownPath));
     }
 
     private void PostViewerMessage(object message)

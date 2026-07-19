@@ -1,12 +1,12 @@
 {
   "name": "lean-md-viewer",
-  "version": "0.2.8",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node --test --test-isolation=none test/app-shell.test.js test/math-plugin.test.js"
+    "test": "node --test --test-isolation=none test/app-shell.test.js test/map-layout.test.js test/math-plugin.test.js test/tree-sample.test.js"
   },
   "dependencies": {
     "katex": "^0.16.22",
