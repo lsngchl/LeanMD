@@ -7,3 +7,4 @@ dist-desktop/
 desktop/**/bin/
 desktop/**/obj/
 release/
+desktop/LeanMD/Assets/LeanMD.png
