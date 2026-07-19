@@ -87,6 +87,24 @@ test("records only followed Markdown links in an exploration map", () => {
   assert.doesNotMatch(appSource, /isMapPositionFree|mapPositions\.has/);
 });
 
+test("does not draw a new edge when revisiting a discovered node", () => {
+  assert.match(desktopHost, /bool targetWasAlreadyDiscovered = _mapNodes\.Contains/);
+  assert.match(desktopHost, /if \(!targetWasAlreadyDiscovered\)\s*{\s*_mapNodes\.Add\(targetPath\)/s);
+  assert.match(
+    desktopHost,
+    /if \(!targetWasAlreadyDiscovered\)[\s\S]*?_mapEdges\.Add\(\(sourcePath, targetPath\)\);/,
+  );
+});
+
+test("marks the immediately previous document on the map", () => {
+  assert.match(desktopHost, /private string\? _previousMapPath/);
+  assert.match(desktopHost, /previous = _previousMapPath/);
+  assert.match(appSource, /previous: typeof nextState\.previous === "string"/);
+  assert.match(appSource, /button\.classList\.toggle\("is-previous", isPrevious\)/);
+  assert.match(stylesSource, /\.map-node\.is-previous::after\s*{/);
+  assert.match(stylesSource, /content: "Previous"/);
+});
+
 test("toggles the map with M and closes it with Escape", () => {
   assert.match(html, /aria-keyshortcuts="M"/);
   assert.match(appSource, /function toggleMap\(\)/);

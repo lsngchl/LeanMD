@@ -15,6 +15,7 @@ internal sealed class MainForm : Form
     private readonly List<(string From, string To)> _mapEdges = [];
     private readonly Stack<string> _documentHistory = new();
     private string? _mapRootPath;
+    private string? _previousMapPath;
     private int _mapSessionId;
     private Task<string>? _initialMarkdownReadTask;
     private bool _initialContentSent;
@@ -293,7 +294,7 @@ internal sealed class MainForm : Form
                 source,
                 name = Path.GetFileName(markdownPath),
             });
-            UpdateMapAfterOpen(markdownPath, reason, linkSourcePath);
+            UpdateMapAfterOpen(markdownPath, reason, previousPath, linkSourcePath);
         }
         catch (Exception exception)
         {
@@ -390,6 +391,7 @@ internal sealed class MainForm : Form
     private void UpdateMapAfterOpen(
         string markdownPath,
         OpenReason reason,
+        string? previousPath,
         string? linkSourcePath)
     {
         switch (reason)
@@ -402,6 +404,7 @@ internal sealed class MainForm : Form
                 return;
             case OpenReason.Map:
             case OpenReason.History:
+                SetPreviousMapNode(previousPath, markdownPath);
                 PublishMapState();
                 return;
         }
@@ -411,6 +414,7 @@ internal sealed class MainForm : Form
     {
         _mapSessionId++;
         _mapRootPath = rootPath;
+        _previousMapPath = null;
         _documentHistory.Clear();
         _mapNodes.Clear();
         _mapEdges.Clear();
@@ -422,6 +426,7 @@ internal sealed class MainForm : Form
     {
         _mapSessionId++;
         _mapRootPath = null;
+        _previousMapPath = null;
         _documentHistory.Clear();
         _mapNodes.Clear();
         _mapEdges.Clear();
@@ -435,25 +440,36 @@ internal sealed class MainForm : Form
         {
             _mapSessionId++;
             _mapRootPath = sourcePath;
+            _previousMapPath = null;
             _mapNodes.Clear();
             _mapEdges.Clear();
             _mapNodes.Add(sourcePath);
         }
 
-        if (!_mapNodes.Contains(targetPath, StringComparer.OrdinalIgnoreCase))
+        SetPreviousMapNode(sourcePath, targetPath);
+        bool targetWasAlreadyDiscovered = _mapNodes.Contains(
+            targetPath,
+            StringComparer.OrdinalIgnoreCase);
+
+        if (!targetWasAlreadyDiscovered)
         {
             _mapNodes.Add(targetPath);
-        }
-
-        if (!sourcePath.Equals(targetPath, StringComparison.OrdinalIgnoreCase) &&
-            !_mapEdges.Any(edge =>
-                edge.From.Equals(sourcePath, StringComparison.OrdinalIgnoreCase) &&
-                edge.To.Equals(targetPath, StringComparison.OrdinalIgnoreCase)))
-        {
-            _mapEdges.Add((sourcePath, targetPath));
+            if (!sourcePath.Equals(targetPath, StringComparison.OrdinalIgnoreCase))
+            {
+                _mapEdges.Add((sourcePath, targetPath));
+            }
         }
 
         PublishMapState();
+    }
+
+    private void SetPreviousMapNode(string? previousPath, string currentPath)
+    {
+        _previousMapPath = previousPath is not null &&
+            !previousPath.Equals(currentPath, StringComparison.OrdinalIgnoreCase) &&
+            _mapNodes.Contains(previousPath, StringComparer.OrdinalIgnoreCase)
+                ? previousPath
+                : null;
     }
 
     private void PublishMapState()
@@ -468,6 +484,7 @@ internal sealed class MainForm : Form
             sessionId = _mapSessionId,
             root = _mapRootPath,
             current = _markdownPath,
+            previous = _previousMapPath,
             nodes = _mapNodes.Select((path, order) => new
             {
                 id = path,

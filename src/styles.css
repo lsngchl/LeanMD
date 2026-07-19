@@ -10,6 +10,8 @@
   --accent: #1f6b5b;
   --accent-strong: #155246;
   --accent-soft: #e4f0ec;
+  --previous: #a15c16;
+  --previous-soft: #fff0dc;
   --code-bg: #f1f0eb;
   --quote-bg: #f4f8f6;
   --shadow: 0 20px 50px rgb(38 44 42 / 8%);
@@ -33,6 +35,8 @@
   --accent: #71c5ae;
   --accent-strong: #9edbc9;
   --accent-soft: #1c3932;
+  --previous: #efad68;
+  --previous-soft: #3a291c;
   --code-bg: #232a28;
   --quote-bg: #1c2925;
   --shadow: 0 24px 70px rgb(0 0 0 / 28%);
@@ -809,6 +813,31 @@ a:focus-visible {
   box-shadow:
     0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent),
     0 12px 30px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.map-node.is-previous {
+  border-color: var(--previous);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--previous) 19%, transparent),
+    0 10px 26px color-mix(in srgb, var(--previous) 13%, transparent);
+}
+
+.map-node.is-previous::after {
+  position: absolute;
+  top: -10px;
+  right: 9px;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--previous) 48%, var(--line));
+  border-radius: 999px;
+  color: var(--previous);
+  background: var(--previous-soft);
+  content: "Previous";
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.35;
+  text-transform: uppercase;
 }
 
 .map-node strong,

@@ -8,11 +8,11 @@ A small, local-first Markdown viewer that renders LaTeX written with either
 - Current development source: the workspace root
 - Shared Markdown examples: `samples/`
 - Large tree-layout test set: `samples/tree_layout_stress/00_tree_root.md`
-- Current official release folder: `release/LeanMD-1.1.0/`
-- Preserved previous release: `release/LeanMD-1.0.0/`
+- Current official release folder: `release/LeanMD-1.2.0/`
+- Preserved previous releases: `release/LeanMD-1.0.0/`, `release/LeanMD-1.1.0/`
 
 The current source, executable metadata, and installer display version are all
-kept in sync at `1.1.0`.
+kept in sync at `1.2.0`.
 
 ## Features
 
@@ -26,6 +26,7 @@ kept in sync at `1.1.0`.
 - In-app navigation for relative Markdown links and a visited-path exploration map
 - Recursive map layout that keeps sibling subtrees ordered as branches grow
 - Drag-to-pan map navigation with slider, button, fit, and wheel zoom controls
+- First-discovery-only map edges and a marker for the previously viewed document
 - Code spans and fenced code blocks are excluded from math rendering
 - Raw HTML in Markdown is disabled
 
@@ -52,10 +53,10 @@ The Windows desktop wrapper accepts a Markdown path as its first command-line
 argument and loads cacheable viewer assets in WebView2.
 
 ```powershell
-dotnet publish desktop/LeanMD/LeanMD.csproj -c Release -r win-x64 --self-contained false -o release/LeanMD-1.1.0
+dotnet publish desktop/LeanMD/LeanMD.csproj -c Release -r win-x64 --self-contained false -o release/LeanMD-1.2.0
 ```
 
-Run `release/LeanMD-1.1.0/Install-LeanMD.cmd` to install the app for the current user.
+Run `release/LeanMD-1.2.0/Install-LeanMD.cmd` to install the app for the current user.
 The installer registers LeanMD as an available handler for `.md` and `.markdown`,
 but does not open Windows Default Apps settings or change the existing default app.
 Administrator privileges are not required.

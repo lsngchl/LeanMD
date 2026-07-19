@@ -58,6 +58,7 @@ let mapState = {
   sessionId: null,
   root: null,
   current: null,
+  previous: null,
   nodes: [],
   edges: [],
 };
@@ -118,6 +119,7 @@ function setMapState(nextState) {
     sessionId: nextState.sessionId,
     root: typeof nextState.root === "string" ? nextState.root : null,
     current: typeof nextState.current === "string" ? nextState.current : null,
+    previous: typeof nextState.previous === "string" ? nextState.previous : null,
     nodes: nextState.nodes,
     edges: nextState.edges,
   };
@@ -175,10 +177,21 @@ function renderMap() {
     button.className = "map-node";
     button.type = "button";
     button.style.transform = `translate(${position.x}px, ${position.y}px)`;
-    button.title = node.detail;
-    button.setAttribute("aria-label", `${node.label}. ${node.detail}`);
+    const isCurrent = node.id === mapState.current;
+    const isPrevious = node.id === mapState.previous;
+    const stateDescription = isCurrent
+      ? "Current document. "
+      : isPrevious
+        ? "Previous document. "
+        : "";
+    button.title = isPrevious ? `Previous · ${node.detail}` : node.detail;
+    button.setAttribute(
+      "aria-label",
+      `${node.label}. ${stateDescription}${node.detail}`,
+    );
     button.classList.toggle("is-root", node.id === mapState.root);
-    button.classList.toggle("is-current", node.id === mapState.current);
+    button.classList.toggle("is-current", isCurrent);
+    button.classList.toggle("is-previous", isPrevious);
 
     const label = document.createElement("strong");
     label.textContent = node.label;
