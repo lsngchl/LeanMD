@@ -1,0 +1,9 @@
+node_modules/
+.pnpm-store/
+.agents/
+dist-desktop/
+.vite/
+*.log
+desktop/**/bin/
+desktop/**/obj/
+release/
