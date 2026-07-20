@@ -22,6 +22,10 @@ function fail(message) {
   throw new Error(`Invalid why DAG: ${message}`);
 }
 
+function readNormalizedText(filePath) {
+  return readFileSync(filePath, "utf8").replace(/\r\n?/gu, "\n");
+}
+
 function normalizedRelativePath(value) {
   return value.replaceAll("\\", "/");
 }
@@ -198,13 +202,13 @@ for (const document of documents) {
   )}\n`;
 
   if (shouldWrite) {
-    if (!existsSync(sidecarPath) || readFileSync(sidecarPath, "utf8") !== generatedSidecar) {
+    if (!existsSync(sidecarPath) || readNormalizedText(sidecarPath) !== generatedSidecar) {
       writeFileSync(sidecarPath, generatedSidecar, "utf8");
       updatedSidecarCount += 1;
     }
   } else if (!existsSync(sidecarPath)) {
     fail(`${document}.leanmd.json is missing; run with --write to generate it`);
-  } else if (readFileSync(sidecarPath, "utf8") !== generatedSidecar) {
+  } else if (readNormalizedText(sidecarPath) !== generatedSidecar) {
     fail(`${document}.leanmd.json is stale; run with --write to regenerate it`);
   }
 }
@@ -234,13 +238,13 @@ for (const edge of shortcutEdges) {
   )}\n`;
   if (shouldWrite) {
     mkdirSync(path.dirname(shortcutPath), { recursive: true });
-    if (!existsSync(shortcutPath) || readFileSync(shortcutPath, "utf8") !== generatedShortcut) {
+    if (!existsSync(shortcutPath) || readNormalizedText(shortcutPath) !== generatedShortcut) {
       writeFileSync(shortcutPath, generatedShortcut, "utf8");
       updatedShortcutCount += 1;
     }
   } else if (!existsSync(shortcutPath)) {
     fail(`${shortcutDocument} is missing; run with --write to generate it`);
-  } else if (readFileSync(shortcutPath, "utf8") !== generatedShortcut) {
+  } else if (readNormalizedText(shortcutPath) !== generatedShortcut) {
     fail(`${shortcutDocument} is stale; run with --write to regenerate it`);
   }
 }
@@ -264,7 +268,7 @@ if (shouldWrite) {
       ? `Updated ${updatedShortcutCount} why shortcut files.`
       : "Why shortcut files are already up to date.",
   );
-  if (!existsSync(dependencyPath) || readFileSync(dependencyPath, "utf8") !== generated) {
+  if (!existsSync(dependencyPath) || readNormalizedText(dependencyPath) !== generated) {
     writeFileSync(dependencyPath, generated, "utf8");
     console.log("Updated dependencies.json from Markdown why links.");
   } else {
@@ -272,7 +276,7 @@ if (shouldWrite) {
   }
 } else if (!existsSync(dependencyPath)) {
   fail("dependencies.json is missing; run with --write to generate it");
-} else if (readFileSync(dependencyPath, "utf8") !== generated) {
+} else if (readNormalizedText(dependencyPath) !== generated) {
   fail("dependencies.json is stale; run with --write to regenerate it");
 }
 

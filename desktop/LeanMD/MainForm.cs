@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
@@ -7,12 +8,20 @@ namespace LeanMD;
 
 internal sealed class MainForm : Form
 {
+    private static MainForm? s_lastActivatedWindow;
     private const string ViewerHostName = "leanmd.local";
+    private const int MarkdownReloadDebounceMilliseconds = 250;
+    private const int MarkdownReadRetryCount = 4;
+    private const int MarkdownReadRetryDelayMilliseconds = 100;
+    private const int LeanMdContextWriteDebounceMilliseconds = 100;
     private string? _markdownPath;
     private string? _lastMarkdownDirectory;
     private readonly Action<string, MainForm> _openRecallWindow;
     private readonly bool _persistWindowState;
     private readonly WebView2 _webView;
+    private readonly System.Windows.Forms.Timer _markdownReloadTimer;
+    private readonly System.Windows.Forms.Timer _leanMdContextWriteTimer;
+    private readonly string _contextWindowId = Guid.NewGuid().ToString("N");
     private readonly List<string> _mapNodes = [];
     private readonly List<(string From, string To)> _mapEdges = [];
     private readonly Stack<string> _documentHistory = new();
@@ -20,6 +29,13 @@ internal sealed class MainForm : Form
     private string? _previousMapPath;
     private int _mapSessionId;
     private Task<string>? _initialMarkdownReadTask;
+    private FileSystemWatcher? _markdownWatcher;
+    private string? _lastRenderedSource;
+    private string? _leanMdMetadataDirectory;
+    private int _documentContextId;
+    private ViewerViewport? _viewerViewport;
+    private ViewerFocus? _viewerFocus;
+    private bool _formIsClosing;
     private bool _initialContentSent;
     private bool _windowRevealed;
 
@@ -30,6 +46,16 @@ internal sealed class MainForm : Form
         Map,
         History,
     }
+
+    private readonly record struct ViewerViewport(
+        int StartLine,
+        int EndLine,
+        int CenterLine);
+
+    private readonly record struct ViewerFocus(
+        int StartLine,
+        int EndLine,
+        string SelectedText);
 
     public MainForm(
         string? markdownPath,
@@ -59,10 +85,22 @@ internal sealed class MainForm : Form
             AllowExternalDrop = true,
             DefaultBackgroundColor = BackColor,
         };
+        _markdownReloadTimer = new System.Windows.Forms.Timer
+        {
+            Interval = MarkdownReloadDebounceMilliseconds,
+        };
+        _markdownReloadTimer.Tick += OnMarkdownReloadTimerTick;
+        _leanMdContextWriteTimer = new System.Windows.Forms.Timer
+        {
+            Interval = LeanMdContextWriteDebounceMilliseconds,
+        };
+        _leanMdContextWriteTimer.Tick += OnLeanMdContextWriteTimerTick;
 
         Controls.Add(_webView);
         Shown += OnShown;
         FormClosing += OnFormClosing;
+        Activated += OnFormActivated;
+        Deactivate += OnFormDeactivated;
     }
 
     private async void OnShown(object? sender, EventArgs eventArgs)
@@ -218,6 +256,9 @@ internal sealed class MainForm : Form
                         StartMap(_markdownPath);
                     }
                     break;
+                case "viewer-context":
+                    UpdateViewerContext(message.RootElement);
+                    break;
             }
         }
         catch
@@ -298,17 +339,21 @@ internal sealed class MainForm : Form
         {
             string source = sourceTask is not null
                 ? await sourceTask
-                : await File.ReadAllTextAsync(markdownPath);
+                : await ReadMarkdownSourceAsync(markdownPath);
             markdownPath = Path.GetFullPath(markdownPath);
             _markdownPath = markdownPath;
             _lastMarkdownDirectory = Path.GetDirectoryName(markdownPath);
             _initialMarkdownReadTask = null;
+            _lastRenderedSource = source;
+            ConfigureMarkdownWatcher(markdownPath);
+            ConfigureLeanMdContext(markdownPath);
             UpdateHistoryAfterOpen(reason, previousPath, markdownPath);
             PostViewerMessage(new
             {
                 type = "open-markdown",
                 source,
                 name = Path.GetFileName(markdownPath),
+                contextId = _documentContextId,
             });
             UpdateMapAfterOpen(markdownPath, reason, previousPath, linkSourcePath);
         }
@@ -567,6 +612,416 @@ internal sealed class MainForm : Form
         _webView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(message));
     }
 
+    private void ConfigureMarkdownWatcher(string markdownPath)
+    {
+        DisposeMarkdownWatcher();
+
+        string? directory = Path.GetDirectoryName(markdownPath);
+        if (directory is null || !Directory.Exists(directory)) return;
+
+        var watcher = new FileSystemWatcher(directory)
+        {
+            IncludeSubdirectories = false,
+            NotifyFilter = NotifyFilters.FileName |
+                NotifyFilters.LastWrite |
+                NotifyFilters.Size |
+                NotifyFilters.CreationTime,
+        };
+        watcher.Changed += OnWatchedDirectoryChanged;
+        watcher.Created += OnWatchedDirectoryChanged;
+        watcher.Deleted += OnWatchedDirectoryChanged;
+        watcher.Renamed += OnWatchedDirectoryChanged;
+        watcher.Error += OnMarkdownWatcherError;
+        watcher.EnableRaisingEvents = true;
+        _markdownWatcher = watcher;
+    }
+
+    private void OnWatchedDirectoryChanged(object sender, FileSystemEventArgs eventArgs)
+    {
+        string? markdownPath = _markdownPath;
+        if (markdownPath is null) return;
+
+        bool affectsCurrentFile = PathsEqual(eventArgs.FullPath, markdownPath);
+        if (eventArgs is RenamedEventArgs renamedEventArgs)
+        {
+            affectsCurrentFile |= PathsEqual(renamedEventArgs.OldFullPath, markdownPath);
+        }
+
+        if (affectsCurrentFile)
+        {
+            ScheduleMarkdownReload();
+        }
+    }
+
+    private void OnMarkdownWatcherError(object sender, ErrorEventArgs eventArgs)
+    {
+        ScheduleMarkdownReload();
+    }
+
+    private void ScheduleMarkdownReload()
+    {
+        if (IsDisposed || Disposing || !IsHandleCreated) return;
+
+        try
+        {
+            BeginInvoke(new Action(() =>
+            {
+                if (IsDisposed || Disposing) return;
+                _markdownReloadTimer.Stop();
+                _markdownReloadTimer.Start();
+            }));
+        }
+        catch (InvalidOperationException)
+        {
+            // The window closed while the file-system event was being delivered.
+        }
+    }
+
+    private async void OnMarkdownReloadTimerTick(object? sender, EventArgs eventArgs)
+    {
+        _markdownReloadTimer.Stop();
+        await ReloadCurrentMarkdownAsync();
+    }
+
+    private async Task ReloadCurrentMarkdownAsync()
+    {
+        string? markdownPath = _markdownPath;
+        if (markdownPath is null) return;
+
+        for (int attempt = 0; attempt < MarkdownReadRetryCount; attempt++)
+        {
+            try
+            {
+                if (!File.Exists(markdownPath))
+                {
+                    throw new FileNotFoundException(null, markdownPath);
+                }
+
+                string source = await ReadMarkdownSourceAsync(markdownPath);
+                if (!PathsEqual(_markdownPath, markdownPath) || source == _lastRenderedSource)
+                {
+                    return;
+                }
+
+                _lastRenderedSource = source;
+                PostViewerMessage(new
+                {
+                    type = "reload-markdown",
+                    source,
+                    name = Path.GetFileName(markdownPath),
+                    contextId = _documentContextId,
+                });
+                return;
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                if (attempt == MarkdownReadRetryCount - 1) return;
+                await Task.Delay(MarkdownReadRetryDelayMilliseconds * (attempt + 1));
+            }
+        }
+    }
+
+    private static async Task<string> ReadMarkdownSourceAsync(string markdownPath)
+    {
+        await using var stream = new FileStream(
+            markdownPath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete,
+            bufferSize: 4096,
+            options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+        using var reader = new StreamReader(stream, detectEncodingFromByteOrderMarks: true);
+        return await reader.ReadToEndAsync();
+    }
+
+    private static bool PathsEqual(string? firstPath, string? secondPath)
+    {
+        if (firstPath is null || secondPath is null) return false;
+
+        try
+        {
+            return Path.GetFullPath(firstPath)
+                .Equals(Path.GetFullPath(secondPath), StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void DisposeMarkdownWatcher()
+    {
+        _markdownReloadTimer.Stop();
+        _markdownWatcher?.Dispose();
+        _markdownWatcher = null;
+    }
+
+    private void ConfigureLeanMdContext(string markdownPath)
+    {
+        string? previousMetadataDirectory = _leanMdMetadataDirectory;
+        string? nextMetadataDirectory = FindLeanMdMetadataDirectory(markdownPath);
+
+        _leanMdContextWriteTimer.Stop();
+        _documentContextId += 1;
+        _viewerViewport = null;
+        _viewerFocus = null;
+        _leanMdMetadataDirectory = nextMetadataDirectory;
+
+        if (previousMetadataDirectory is not null &&
+            !PathsEqual(previousMetadataDirectory, nextMetadataDirectory))
+        {
+            DeleteOwnedLeanMdContext(previousMetadataDirectory);
+        }
+
+        ScheduleLeanMdContextWrite();
+    }
+
+    private static string? FindLeanMdMetadataDirectory(string markdownPath)
+    {
+        string? documentDirectory = Path.GetDirectoryName(Path.GetFullPath(markdownPath));
+        if (documentDirectory is null) return null;
+
+        for (var directory = new DirectoryInfo(documentDirectory);
+             directory is not null;
+             directory = directory.Parent)
+        {
+            string metadataDirectory = Path.Combine(directory.FullName, ".leanmd");
+            string dependenciesPath = Path.Combine(metadataDirectory, "dependencies.json");
+            if (File.Exists(dependenciesPath))
+            {
+                return metadataDirectory;
+            }
+        }
+
+        return null;
+    }
+
+    private void UpdateViewerContext(JsonElement message)
+    {
+        if (_leanMdMetadataDirectory is null ||
+            !message.TryGetProperty("contextId", out JsonElement contextIdElement) ||
+            !contextIdElement.TryGetInt32(out int contextId) ||
+            contextId != _documentContextId)
+        {
+            return;
+        }
+
+        _viewerViewport = TryReadViewerViewport(message, out ViewerViewport viewport)
+            ? viewport
+            : null;
+        _viewerFocus = TryReadViewerFocus(message, out ViewerFocus focus)
+            ? focus
+            : null;
+        ScheduleLeanMdContextWrite();
+    }
+
+    private static bool TryReadViewerViewport(
+        JsonElement message,
+        out ViewerViewport viewport)
+    {
+        viewport = default;
+        if (!message.TryGetProperty("viewport", out JsonElement element) ||
+            element.ValueKind != JsonValueKind.Object ||
+            !TryReadPositiveInt(element, "startLine", out int startLine) ||
+            !TryReadPositiveInt(element, "endLine", out int endLine) ||
+            !TryReadPositiveInt(element, "centerLine", out int centerLine) ||
+            endLine < startLine ||
+            centerLine < startLine ||
+            centerLine > endLine)
+        {
+            return false;
+        }
+
+        viewport = new ViewerViewport(startLine, endLine, centerLine);
+        return true;
+    }
+
+    private static bool TryReadViewerFocus(JsonElement message, out ViewerFocus focus)
+    {
+        focus = default;
+        if (!message.TryGetProperty("focus", out JsonElement element) ||
+            element.ValueKind != JsonValueKind.Object ||
+            !TryReadPositiveInt(element, "startLine", out int startLine) ||
+            !TryReadPositiveInt(element, "endLine", out int endLine) ||
+            endLine < startLine ||
+            !element.TryGetProperty("selectedText", out JsonElement selectedTextElement) ||
+            selectedTextElement.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        string? selectedText = selectedTextElement.GetString()?.Trim();
+        if (string.IsNullOrEmpty(selectedText)) return false;
+
+        focus = new ViewerFocus(
+            startLine,
+            endLine,
+            selectedText.Length <= 2000 ? selectedText : selectedText[..2000]);
+        return true;
+    }
+
+    private static bool TryReadPositiveInt(
+        JsonElement element,
+        string propertyName,
+        out int value)
+    {
+        value = 0;
+        return element.TryGetProperty(propertyName, out JsonElement property) &&
+            property.TryGetInt32(out value) &&
+            value > 0;
+    }
+
+    private void ScheduleLeanMdContextWrite()
+    {
+        if (_formIsClosing ||
+            !ReferenceEquals(s_lastActivatedWindow, this) ||
+            _leanMdMetadataDirectory is null ||
+            _markdownPath is null)
+        {
+            return;
+        }
+
+        _leanMdContextWriteTimer.Stop();
+        _leanMdContextWriteTimer.Start();
+    }
+
+    private async void OnLeanMdContextWriteTimerTick(object? sender, EventArgs eventArgs)
+    {
+        _leanMdContextWriteTimer.Stop();
+        await WriteLeanMdContextAsync();
+    }
+
+    private async Task WriteLeanMdContextAsync()
+    {
+        if (_formIsClosing || !ReferenceEquals(s_lastActivatedWindow, this)) return;
+
+        string? metadataDirectory = _leanMdMetadataDirectory;
+        string? markdownPath = _markdownPath;
+        if (metadataDirectory is null || markdownPath is null) return;
+
+        string? workspaceRoot = Directory.GetParent(metadataDirectory)?.FullName;
+        if (workspaceRoot is null) return;
+
+        int contextId = _documentContextId;
+        ViewerViewport? viewportSnapshot = _viewerViewport;
+        ViewerFocus? focusSnapshot = _viewerFocus;
+        string relativeDocumentPath = Path.GetRelativePath(workspaceRoot, markdownPath)
+            .Replace(Path.DirectorySeparatorChar, '/');
+
+        object? viewport = viewportSnapshot is ViewerViewport visible
+            ? new
+            {
+                startLine = visible.StartLine,
+                endLine = visible.EndLine,
+                centerLine = visible.CenterLine,
+            }
+            : null;
+        object? focus = focusSnapshot is ViewerFocus selected
+            ? new
+            {
+                startLine = selected.StartLine,
+                endLine = selected.EndLine,
+                selectedText = selected.SelectedText,
+            }
+            : null;
+        string json = JsonSerializer.Serialize(
+            new
+            {
+                schemaVersion = 1,
+                windowId = _contextWindowId,
+                document = relativeDocumentPath,
+                viewport,
+                focus,
+                updatedAt = DateTimeOffset.Now.ToString("O"),
+            },
+            new JsonSerializerOptions { WriteIndented = true });
+
+        string contextPath = Path.Combine(metadataDirectory, "current-context.json");
+        string temporaryPath = Path.Combine(
+            metadataDirectory,
+            $".current-context.{_contextWindowId}.tmp");
+
+        try
+        {
+            await File.WriteAllTextAsync(temporaryPath, json, new UTF8Encoding(false));
+            if (contextId != _documentContextId ||
+                !PathsEqual(metadataDirectory, _leanMdMetadataDirectory))
+            {
+                return;
+            }
+
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                try
+                {
+                    File.Move(temporaryPath, contextPath, overwrite: true);
+                    return;
+                }
+                catch (IOException) when (attempt < 2)
+                {
+                    await Task.Delay(50 * (attempt + 1));
+                }
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            // Live context is optional; document viewing must continue if it cannot be written.
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+            }
+            catch
+            {
+                // A later context update can replace an abandoned temporary file.
+            }
+        }
+    }
+
+    private void DeleteOwnedLeanMdContext(string metadataDirectory)
+    {
+        string contextPath = Path.Combine(metadataDirectory, "current-context.json");
+        if (!File.Exists(contextPath)) return;
+
+        try
+        {
+            using JsonDocument context = JsonDocument.Parse(File.ReadAllText(contextPath));
+            if (context.RootElement.TryGetProperty("windowId", out JsonElement windowId) &&
+                windowId.ValueKind == JsonValueKind.String &&
+                windowId.GetString() == _contextWindowId)
+            {
+                File.Delete(contextPath);
+            }
+        }
+        catch
+        {
+            // Another window may be replacing the shared context file.
+        }
+    }
+
+    private void OnFormActivated(object? sender, EventArgs eventArgs)
+    {
+        s_lastActivatedWindow = this;
+        ScheduleLeanMdContextWrite();
+    }
+
+    private async void OnFormDeactivated(object? sender, EventArgs eventArgs)
+    {
+        if (_formIsClosing ||
+            !ReferenceEquals(s_lastActivatedWindow, this) ||
+            !_leanMdContextWriteTimer.Enabled)
+        {
+            return;
+        }
+
+        _leanMdContextWriteTimer.Stop();
+        await WriteLeanMdContextAsync();
+    }
+
     private void RevealWindow()
     {
         if (_windowRevealed) return;
@@ -588,7 +1043,7 @@ internal sealed class MainForm : Form
     private Task<string>? StartInitialMarkdownRead()
     {
         return _markdownPath is not null && File.Exists(_markdownPath)
-            ? File.ReadAllTextAsync(_markdownPath)
+            ? ReadMarkdownSourceAsync(_markdownPath)
             : null;
     }
 
@@ -700,6 +1155,20 @@ internal sealed class MainForm : Form
 
     private void OnFormClosing(object? sender, FormClosingEventArgs eventArgs)
     {
+        _formIsClosing = true;
+        DisposeMarkdownWatcher();
+        _markdownReloadTimer.Dispose();
+        _leanMdContextWriteTimer.Stop();
+        _leanMdContextWriteTimer.Dispose();
+        if (_leanMdMetadataDirectory is not null)
+        {
+            DeleteOwnedLeanMdContext(_leanMdMetadataDirectory);
+        }
+        if (ReferenceEquals(s_lastActivatedWindow, this))
+        {
+            s_lastActivatedWindow = null;
+        }
+
         if (!_persistWindowState) return;
 
         Rectangle boundsToSave = WindowState == FormWindowState.Normal

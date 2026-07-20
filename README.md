@@ -50,6 +50,14 @@ The generated `.leanmd/dependencies.json` manifest combines those sidecars into
 the complete why DAG. `"recall"` links remain navigation metadata in Markdown
 and are ignored by why-DAG validation.
 
+When the desktop viewer finds `.leanmd/dependencies.json` in the current
+document's directory or one of its ancestors, it treats that directory as a
+structured LeanMD document set. The active document, visible source-line range,
+and selected passage are written to the ignored
+`.leanmd/current-context.json` file for local Codex context sharing. Ordinary
+Markdown files outside a structured document set are still viewed and
+automatically reloaded without creating this context file.
+
 The sample directory itself is the root document's folder. Every non-root
 document lives in a same-named child folder of its canonical why parent. If
 another parent uses that document, the second location contains a portable
@@ -87,11 +95,13 @@ The Windows desktop wrapper accepts a Markdown path as its first command-line
 argument and loads cacheable viewer assets in WebView2.
 
 ```powershell
-dotnet publish desktop/LeanMD/LeanMD.csproj -c Release -r win-x64 --self-contained false
+dotnet publish desktop/LeanMD/LeanMD.csproj -c Release -r win-x64 --self-contained false -o release/LeanMD-1.3.1
 ```
 
-After publishing, run `Install-LeanMD.cmd` from the publish output directory to
-install the app for the current user.
+Official release folders use the `release/LeanMD-<version>/` naming convention.
+Replace `1.3.1` in the command above with the version being released. After
+publishing, run `Install-LeanMD.cmd` from that release folder to install the app
+for the current user.
 The installer registers LeanMD as an available handler for `.md` and `.markdown`,
 but does not open Windows Default Apps settings or change the existing default app.
 Administrator privileges are not required.

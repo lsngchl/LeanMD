@@ -45,10 +45,15 @@ const MAP_VERTICAL_STEP = 104;
 const MAP_MIN_ZOOM = 0.2;
 const MAP_MAX_ZOOM = 2;
 const MAP_ZOOM_STEP = 0.1;
+const SOURCE_BLOCK_SELECTOR =
+  "[data-source-start-line][data-source-end-line]";
+const VIEWER_CONTEXT_DEBOUNCE_MILLISECONDS = 300;
 let renderGeneration = 0;
 let rendererPromise;
 let renderedMapLayout = null;
 let mapPanPointer = null;
+let currentDocumentContextId = null;
+let viewerContextTimer = null;
 let mapCamera = {
   sessionId: null,
   x: 0,
@@ -70,7 +75,12 @@ function loadRenderer() {
   return rendererPromise;
 }
 
-function renderDocument(source, name, renderMarkdown) {
+function renderDocument(
+  source,
+  name,
+  renderMarkdown,
+  { resetScroll = true } = {},
+) {
   setEmptyStateVisible(false);
   elements.preview.innerHTML = renderMarkdown(source);
   elements.documentName.textContent = name;
@@ -84,7 +94,130 @@ function renderDocument(source, name, renderMarkdown) {
 
   document.title = `${name} — LeanMD`;
   announce(`${name} rendered.`);
-  window.scrollTo({ top: 0, behavior: "auto" });
+  if (resetScroll) {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }
+  scheduleViewerContextReport();
+}
+
+function sourceRangeForElement(element) {
+  if (!(element instanceof Element)) return null;
+
+  const startLine = Number(element.dataset.sourceStartLine);
+  const endLine = Number(element.dataset.sourceEndLine);
+  if (
+    !Number.isInteger(startLine) ||
+    !Number.isInteger(endLine) ||
+    startLine < 1 ||
+    endLine < startLine
+  ) {
+    return null;
+  }
+
+  return { startLine, endLine };
+}
+
+function leafSourceBlocks() {
+  return [...elements.preview.querySelectorAll(SOURCE_BLOCK_SELECTOR)].filter(
+    (element) => !element.querySelector(SOURCE_BLOCK_SELECTOR),
+  );
+}
+
+function currentSelectionFocus() {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
+
+  const range = selection.getRangeAt(0);
+  const startElement =
+    range.startContainer instanceof Element
+      ? range.startContainer
+      : range.startContainer.parentElement;
+  const endElement =
+    range.endContainer instanceof Element
+      ? range.endContainer
+      : range.endContainer.parentElement;
+  if (
+    !startElement ||
+    !endElement ||
+    !elements.preview.contains(startElement) ||
+    !elements.preview.contains(endElement)
+  ) {
+    return null;
+  }
+
+  const startRange = sourceRangeForElement(
+    startElement.closest(SOURCE_BLOCK_SELECTOR),
+  );
+  const endRange = sourceRangeForElement(
+    endElement.closest(SOURCE_BLOCK_SELECTOR),
+  );
+  const selectedText = selection.toString().trim();
+  if (!startRange || !endRange || !selectedText) return null;
+
+  return {
+    startLine: Math.min(startRange.startLine, endRange.startLine),
+    endLine: Math.max(startRange.endLine, endRange.endLine),
+    selectedText: selectedText.slice(0, 2000),
+  };
+}
+
+function reportViewerContext() {
+  viewerContextTimer = null;
+  if (!webViewHost || !Number.isInteger(currentDocumentContextId)) return;
+
+  const visibleBlocks = leafSourceBlocks()
+    .map((element) => ({
+      element,
+      range: sourceRangeForElement(element),
+      bounds: element.getBoundingClientRect(),
+    }))
+    .filter(
+      ({ range, bounds }) =>
+        range &&
+        bounds.width > 0 &&
+        bounds.height > 0 &&
+        bounds.bottom > 0 &&
+        bounds.top < window.innerHeight,
+    );
+
+  let viewport = null;
+  if (visibleBlocks.length > 0) {
+    const viewportCenter = window.innerHeight / 2;
+    const centerBlock = visibleBlocks.reduce((closest, candidate) => {
+      const closestDistance = Math.abs(
+        closest.bounds.top + closest.bounds.height / 2 - viewportCenter,
+      );
+      const candidateDistance = Math.abs(
+        candidate.bounds.top + candidate.bounds.height / 2 - viewportCenter,
+      );
+      return candidateDistance < closestDistance ? candidate : closest;
+    });
+
+    viewport = {
+      startLine: Math.min(...visibleBlocks.map(({ range }) => range.startLine)),
+      endLine: Math.max(...visibleBlocks.map(({ range }) => range.endLine)),
+      centerLine: Math.round(
+        (centerBlock.range.startLine + centerBlock.range.endLine) / 2,
+      ),
+    };
+  }
+
+  webViewHost.postMessage({
+    type: "viewer-context",
+    contextId: currentDocumentContextId,
+    viewport,
+    focus: currentSelectionFocus(),
+  });
+}
+
+function scheduleViewerContextReport() {
+  if (!webViewHost || !Number.isInteger(currentDocumentContextId)) return;
+
+  window.clearTimeout(viewerContextTimer);
+  viewerContextTimer = window.setTimeout(
+    reportViewerContext,
+    VIEWER_CONTEXT_DEBOUNCE_MILLISECONDS,
+  );
 }
 
 function isRelativeMarkdownLink(href) {
@@ -433,15 +566,24 @@ async function openFile(file) {
   }
 }
 
-async function renderWithLoading(source, name) {
+async function renderWithLoading(
+  source,
+  name,
+  { preserveScroll = false, showLoading = true } = {},
+) {
   const generation = ++renderGeneration;
-  setDocumentLoading(true);
-  await waitForPaint();
+  const previousScrollY = preserveScroll ? window.scrollY : 0;
+  if (showLoading) {
+    setDocumentLoading(true);
+    await waitForPaint();
+  }
 
   try {
     const { renderMarkdown } = await loadRenderer();
     if (generation !== renderGeneration) return;
-    renderDocument(source, name, renderMarkdown);
+    renderDocument(source, name, renderMarkdown, {
+      resetScroll: !preserveScroll,
+    });
   } catch (error) {
     if (generation !== renderGeneration) return;
     showRenderError(error);
@@ -459,10 +601,23 @@ async function renderWithLoading(source, name) {
   if (generation !== renderGeneration) return;
 
   setDocumentLoading(false);
+  if (preserveScroll) {
+    const maximumScroll = Math.max(
+      0,
+      document.documentElement.scrollHeight - window.innerHeight,
+    );
+    window.scrollTo({
+      top: Math.min(previousScrollY, maximumScroll),
+      behavior: "auto",
+    });
+  }
 }
 
 function showEmptyState() {
   ++renderGeneration;
+  currentDocumentContextId = null;
+  window.clearTimeout(viewerContextTimer);
+  viewerContextTimer = null;
   elements.preview.replaceChildren();
   elements.documentName.textContent = "No document open";
   document.title = "LeanMD Viewer";
@@ -671,6 +826,10 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+window.addEventListener("scroll", scheduleViewerContextReport, { passive: true });
+window.addEventListener("resize", scheduleViewerContextReport);
+document.addEventListener("selectionchange", scheduleViewerContextReport);
+
 for (const eventName of ["dragenter", "dragover"]) {
   window.addEventListener(eventName, (event) => {
     event.preventDefault();
@@ -703,9 +862,21 @@ window.addEventListener("drop", (event) => {
 });
 
 window.LeanMD = Object.freeze({
-  openMarkdown(source, name = "Untitled.md") {
+  openMarkdown(source, name = "Untitled.md", contextId = null) {
     if (typeof source !== "string") return;
+    currentDocumentContextId = Number.isInteger(contextId) ? contextId : null;
     return renderWithLoading(source, typeof name === "string" ? name : "Untitled.md");
+  },
+  reloadMarkdown(source, name = "Untitled.md", contextId = null) {
+    if (typeof source !== "string") return;
+    if (Number.isInteger(contextId)) {
+      currentDocumentContextId = contextId;
+    }
+    return renderWithLoading(
+      source,
+      typeof name === "string" ? name : "Untitled.md",
+      { preserveScroll: true, showLoading: false },
+    );
   },
   showEmptyState,
 });
@@ -717,7 +888,17 @@ if (webViewHost) {
   webViewHost.addEventListener("message", async (event) => {
     const message = event.data;
     if (message?.type === "open-markdown") {
-      window.LeanMD.openMarkdown(message.source, message.name);
+      window.LeanMD.openMarkdown(
+        message.source,
+        message.name,
+        message.contextId,
+      );
+    } else if (message?.type === "reload-markdown") {
+      await window.LeanMD.reloadMarkdown(
+        message.source,
+        message.name,
+        message.contextId,
+      );
     } else if (message?.type === "show-empty-state") {
       window.LeanMD.showEmptyState();
     } else if (message?.type === "host-window-visible") {

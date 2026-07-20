@@ -3,6 +3,7 @@ import test from "node:test";
 import katex from "katex";
 import MarkdownIt from "markdown-it";
 import { mathPlugin } from "../src/math-plugin.js";
+import { sourceMapPlugin } from "../src/source-map-plugin.js";
 
 function createRenderer() {
   return new MarkdownIt({ html: false }).use(mathPlugin, {
@@ -94,4 +95,39 @@ test("preserves an unmatched inline opening delimiter", () => {
 
   assert.match(html, /Unfinished \\\(x\+1/);
   assert.doesNotMatch(html, /class="math-inline"/);
+});
+
+test("annotates rendered blocks with one-based source line ranges", () => {
+  const renderer = createRenderer().use(sourceMapPlugin);
+  const source = [
+    "# Heading",
+    "",
+    "Paragraph",
+    "",
+    "\\[",
+    "x^2",
+    "\\]",
+    "",
+    "```text",
+    "code",
+    "```",
+  ].join("\n");
+  const html = renderer.render(source);
+
+  assert.match(
+    html,
+    /<h1 data-source-start-line="1" data-source-end-line="1">/,
+  );
+  assert.match(
+    html,
+    /<p data-source-start-line="3" data-source-end-line="3">/,
+  );
+  assert.match(
+    html,
+    /class="math-display" data-source-start-line="5" data-source-end-line="7"/,
+  );
+  assert.match(
+    html,
+    /<code data-source-start-line="9" data-source-end-line="11"/,
+  );
 });

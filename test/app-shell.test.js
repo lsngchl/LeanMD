@@ -78,6 +78,32 @@ test("desktop drag and drop keeps the source file path in the host", () => {
   assert.match(desktopHost, /droppedFile\.Path/);
 });
 
+test("reloads the current Markdown file after external changes", () => {
+  assert.match(desktopHost, /new FileSystemWatcher\(directory\)/);
+  assert.match(desktopHost, /MarkdownReloadDebounceMilliseconds = 250/);
+  assert.match(desktopHost, /FileShare\.ReadWrite \| FileShare\.Delete/);
+  assert.match(desktopHost, /type = "reload-markdown"/);
+  assert.match(desktopHost, /source == _lastRenderedSource/);
+  assert.match(desktopHost, /DisposeMarkdownWatcher\(\)/);
+  assert.match(appSource, /message\?\.type === "reload-markdown"/);
+  assert.match(appSource, /preserveScroll: true, showLoading: false/);
+  assert.match(appSource, /top: Math\.min\(previousScrollY, maximumScroll\)/);
+});
+
+test("records live context only for structured LeanMD documents", () => {
+  assert.match(desktopHost, /FindLeanMdMetadataDirectory\(markdownPath\)/);
+  assert.match(desktopHost, /Path\.Combine\(metadataDirectory, "dependencies\.json"\)/);
+  assert.match(desktopHost, /Path\.Combine\(metadataDirectory, "current-context\.json"\)/);
+  assert.match(desktopHost, /type = "viewer-context"|case "viewer-context":/);
+  assert.match(desktopHost, /document = relativeDocumentPath/);
+  assert.match(desktopHost, /viewport,/);
+  assert.match(desktopHost, /focus,/);
+  assert.match(appSource, /data-source-start-line/);
+  assert.match(appSource, /VIEWER_CONTEXT_DEBOUNCE_MILLISECONDS = 300/);
+  assert.match(appSource, /type: "viewer-context"/);
+  assert.match(appSource, /currentSelectionFocus\(\)/);
+});
+
 test("records only followed Markdown links in an exploration map", () => {
   assert.match(html, /id="mapButton"/);
   assert.match(html, /id="mapOverlay"/);

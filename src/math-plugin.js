@@ -36,7 +36,8 @@ export function mathPlugin(md, options = {}) {
 
   md.renderer.rules.leanmd_math_block = (tokens, index) => {
     const rendered = renderMath(tokens[index].content, true);
-    return `<div class="math-display">${rendered}</div>\n`;
+    const attributes = md.renderer.renderAttrs(tokens[index]);
+    return `<div class="math-display"${attributes}>${rendered}</div>\n`;
   };
 
   function renderMath(source, displayMode) {

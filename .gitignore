@@ -7,4 +7,6 @@ dist-desktop/
 desktop/**/bin/
 desktop/**/obj/
 release/
+**/.leanmd/current-context.json
+**/.leanmd/.current-context.*.tmp
 desktop/LeanMD/Assets/LeanMD.png
