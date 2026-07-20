@@ -28,6 +28,10 @@ const leanMdStructure = readFileSync(
   new URL("../desktop/LeanMD/LeanMdStructure.cs", import.meta.url),
   "utf8",
 );
+const unresolvedStateStore = readFileSync(
+  new URL("../desktop/LeanMD/UnresolvedStateStore.cs", import.meta.url),
+  "utf8",
+);
 const gitignore = readFileSync(new URL("../.gitignore", import.meta.url), "utf8");
 
 test("starts with a Markdown drop target", () => {
@@ -70,16 +74,21 @@ test("does not bundle a Markdown sample into the app", () => {
   assert.doesNotMatch(desktopHost, /open-sample|bundled-sample-opened/);
 });
 
-test("opens relative Markdown links through the desktop host", () => {
+test("distinguishes internal Markdown links from external web links", () => {
   assert.match(appSource, /elements\.preview\.addEventListener\("click"/);
   assert.match(appSource, /link\.getAttribute\("title"\)/);
-  assert.match(appSource, /type: "open-markdown-link", href, role/);
+  assert.match(appSource, /type: "open-markdown-link",[\s\S]*href,[\s\S]*role,/);
   assert.match(desktopHost, /case "open-markdown-link":/);
-  assert.match(desktopHost, /OpenLinkedMarkdownAsync\(hrefElement\.GetString\(\), role\)/);
+  assert.match(desktopHost, /OpenLinkedMarkdownAsync\([\s\S]*hrefElement\.GetString\(\),[\s\S]*role,[\s\S]*position\)/);
   assert.match(
     desktopHost,
     /Path\.GetFullPath\(Path\.Combine\(currentDirectory, relativePath\)\)/,
   );
+  assert.match(appSource, /function isExternalWebHref\(href\)/);
+  assert.match(appSource, /const href = link\.getAttribute\("href"\)/);
+  assert.match(appSource, /appendExternalLinkIndicator\(link\)/);
+  assert.match(stylesSource, /\.external-link-icon\s*{/);
+  assert.match(appSource, /opens in an external browser/);
 });
 
 test("keeps undiscovered links in the current structure in the same window", () => {
@@ -145,9 +154,23 @@ test("projects revealed LeanMD structure into the exploration map", () => {
   assert.match(appSource, /function renderMap\(\)/);
   assert.match(appSource, /button\.classList\.toggle\("is-inferred", isInferred\)/);
   assert.match(stylesSource, /\.map-node\.is-inferred\s*{/);
-  assert.match(appSource, /type: "open-map-node", id: node\.id/);
+  assert.match(appSource, /type: "open-map-node",[\s\S]*id: node\.id,[\s\S]*position:/);
   assert.match(appSource, /layoutExplorationMap\(mapState\.nodes/);
   assert.doesNotMatch(appSource, /isMapPositionFree|mapPositions\.has/);
+});
+
+test("toggles persistent unresolved sidecars from the document toolbar", () => {
+  assert.match(html, /id="unresolvedButton"/);
+  assert.match(html, /aria-pressed="false"/);
+  assert.match(appSource, /type: "set-document-unresolved"/);
+  assert.match(appSource, /unresolved: !currentDocumentUnresolved/);
+  assert.match(desktopHost, /case "set-document-unresolved":/);
+  assert.match(desktopHost, /contextId != _documentContextId/);
+  assert.match(desktopHost, /UnresolvedStateStore\.SetUnresolved/);
+  assert.match(unresolvedStateStore, /Path\.ChangeExtension\(Path\.GetFullPath\(markdownPath\)/);
+  assert.match(unresolvedStateStore, /File\.Move\(temporaryPath, sidecarPath, overwrite: false\)/);
+  assert.match(unresolvedStateStore, /File\.Delete\(sidecarPath\)/);
+  assert.match(desktopHost, /new FileSystemWatcher\(workspaceRoot, "\*\.unresolved"\)/);
 });
 
 test("persists structured-document exploration maps across primary-window sessions", () => {
@@ -188,6 +211,23 @@ test("marks the immediately previous document on the map", () => {
   assert.match(appSource, /button\.classList\.toggle\("is-previous", isPrevious\)/);
   assert.match(stylesSource, /\.map-node\.is-previous::after\s*{/);
   assert.match(stylesSource, /content: "Previous"/);
+  assert.match(
+    stylesSource,
+    /\.map-node\.is-previous\s*{[^}]*border-color: color-mix\([^;]*28%[^;]*\);[^}]*box-shadow: 0 8px 22px/s,
+  );
+  assert.match(
+    stylesSource,
+    /\.map-node\.is-current\s*{[^}]*border-width: 2px;[^}]*0 0 0 4px[^}]*32%/s,
+  );
+});
+
+test("composes unresolved map badges with previous and inferred states", () => {
+  assert.match(desktopHost, /unresolved = UnresolvedStateStore\.IsUnresolved\(path\)/);
+  assert.match(appSource, /button\.classList\.toggle\("is-unresolved", isUnresolved\)/);
+  assert.match(stylesSource, /\.map-node\.is-unresolved::before\s*{/);
+  assert.match(stylesSource, /\.map-node\.is-previous::after\s*{/);
+  assert.match(stylesSource, /content: "Unresolved"/);
+  assert.match(appSource, /if \(isUnresolved\) stateDescriptions\.push\("Unresolved document\."\)/);
 });
 
 test("toggles the map with M and closes it with Escape", () => {
@@ -232,10 +272,15 @@ test("returns to the previous document with Backspace or comma", () => {
   assert.match(appSource, /event\.key === "Backspace"/);
   assert.match(appSource, /event\.key === ","/);
   assert.match(appSource, /type: "go-back"/);
-  assert.match(desktopHost, /Stack<string> _documentHistory/);
+  assert.match(desktopHost, /Stack<DocumentHistoryEntry> _documentHistory/);
   assert.match(desktopHost, /case "go-back":/);
   assert.match(desktopHost, /await GoBackAsync\(\)/);
   assert.match(desktopHost, /OpenReason\.History/);
+  assert.match(appSource, /position: currentDocumentPosition\(\)/);
+  assert.match(appSource, /function restoreDocumentPosition\(position\)/);
+  assert.match(appSource, /sourceLine: anchor\?\.range\.startLine/);
+  assert.match(desktopHost, /restorePosition: previous\.Position/);
+  assert.match(desktopHost, /restorePosition = serializedRestorePosition/);
 });
 
 test("shows a keyboard shortcut guide from the top bar", () => {

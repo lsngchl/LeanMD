@@ -15,6 +15,7 @@ internal sealed class MainForm : Form
     private const int MarkdownReadRetryDelayMilliseconds = 100;
     private const int LeanMdContextWriteDebounceMilliseconds = 100;
     private const int LeanMdStructureReloadDebounceMilliseconds = 250;
+    private const int UnresolvedStateReloadDebounceMilliseconds = 150;
     private string? _markdownPath;
     private string? _lastMarkdownDirectory;
     private readonly Action<string, MainForm> _openRecallWindow;
@@ -24,11 +25,12 @@ internal sealed class MainForm : Form
     private readonly System.Windows.Forms.Timer _markdownReloadTimer;
     private readonly System.Windows.Forms.Timer _leanMdContextWriteTimer;
     private readonly System.Windows.Forms.Timer _leanMdStructureReloadTimer;
+    private readonly System.Windows.Forms.Timer _unresolvedStateReloadTimer;
     private readonly string _contextWindowId = Guid.NewGuid().ToString("N");
     private readonly List<string> _mapNodes = [];
     private readonly List<(string From, string To)> _mapEdges = [];
     private readonly List<string> _mapVisitedNodes = [];
-    private readonly Stack<string> _documentHistory = new();
+    private readonly Stack<DocumentHistoryEntry> _documentHistory = new();
     private string? _mapRootPath;
     private string? _previousMapPath;
     private string? _mapMetadataDirectory;
@@ -37,6 +39,7 @@ internal sealed class MainForm : Form
     private Task<string>? _initialMarkdownReadTask;
     private FileSystemWatcher? _markdownWatcher;
     private FileSystemWatcher? _leanMdStructureWatcher;
+    private FileSystemWatcher? _unresolvedStateWatcher;
     private LeanMdStructure? _leanMdStructure;
     private string? _lastRenderedSource;
     private string? _leanMdMetadataDirectory;
@@ -109,6 +112,11 @@ internal sealed class MainForm : Form
             Interval = LeanMdStructureReloadDebounceMilliseconds,
         };
         _leanMdStructureReloadTimer.Tick += OnLeanMdStructureReloadTimerTick;
+        _unresolvedStateReloadTimer = new System.Windows.Forms.Timer
+        {
+            Interval = UnresolvedStateReloadDebounceMilliseconds,
+        };
+        _unresolvedStateReloadTimer.Tick += OnUnresolvedStateReloadTimerTick;
 
         Controls.Add(_webView);
         Shown += OnShown;
@@ -248,7 +256,16 @@ internal sealed class MainForm : Form
                             roleElement.ValueKind == JsonValueKind.String
                                 ? roleElement.GetString()
                                 : null;
-                        await OpenLinkedMarkdownAsync(hrefElement.GetString(), role);
+                        DocumentPosition? position = DocumentPosition.TryRead(
+                            message.RootElement,
+                            "position",
+                            out DocumentPosition parsedPosition)
+                                ? parsedPosition
+                                : null;
+                        await OpenLinkedMarkdownAsync(
+                            hrefElement.GetString(),
+                            role,
+                            position);
                     }
                     break;
                 case "open-dropped-file":
@@ -258,7 +275,13 @@ internal sealed class MainForm : Form
                     if (message.RootElement.TryGetProperty("id", out JsonElement idElement) &&
                         idElement.ValueKind == JsonValueKind.String)
                     {
-                        await OpenMapNodeAsync(idElement.GetString());
+                        DocumentPosition? position = DocumentPosition.TryRead(
+                            message.RootElement,
+                            "position",
+                            out DocumentPosition parsedPosition)
+                                ? parsedPosition
+                                : null;
+                        await OpenMapNodeAsync(idElement.GetString(), position);
                     }
                     break;
                 case "go-back":
@@ -269,6 +292,9 @@ internal sealed class MainForm : Form
                     {
                         ResetMap(_markdownPath);
                     }
+                    break;
+                case "set-document-unresolved":
+                    SetCurrentDocumentUnresolved(message.RootElement);
                     break;
                 case "viewer-context":
                     UpdateViewerContext(message.RootElement);
@@ -330,7 +356,9 @@ internal sealed class MainForm : Form
         Task<string>? sourceTask = null,
         bool showEmptyStateOnFailure = false,
         OpenReason reason = OpenReason.Direct,
-        string? linkSourcePath = null)
+        string? linkSourcePath = null,
+        DocumentPosition? historyPosition = null,
+        DocumentPosition? restorePosition = null)
     {
         string? previousPath = _markdownPath;
 
@@ -361,13 +389,27 @@ internal sealed class MainForm : Form
             _lastRenderedSource = source;
             ConfigureMarkdownWatcher(markdownPath);
             ConfigureLeanMdContext(markdownPath);
-            UpdateHistoryAfterOpen(reason, previousPath, markdownPath);
+            UpdateHistoryAfterOpen(
+                reason,
+                previousPath,
+                markdownPath,
+                historyPosition);
+            object? serializedRestorePosition = restorePosition is DocumentPosition position
+                ? new
+                {
+                    sourceLine = position.SourceLine,
+                    offset = position.Offset,
+                    scrollY = position.ScrollY,
+                }
+                : null;
             PostViewerMessage(new
             {
                 type = "open-markdown",
                 source,
                 name = Path.GetFileName(markdownPath),
                 contextId = _documentContextId,
+                unresolved = UnresolvedStateStore.IsUnresolved(markdownPath),
+                restorePosition = serializedRestorePosition,
             });
             UpdateMapAfterOpen(markdownPath, reason, previousPath, linkSourcePath);
         }
@@ -386,7 +428,10 @@ internal sealed class MainForm : Form
         }
     }
 
-    private async Task OpenLinkedMarkdownAsync(string? href, string? role)
+    private async Task OpenLinkedMarkdownAsync(
+        string? href,
+        string? role,
+        DocumentPosition? historyPosition)
     {
         if (_markdownPath is null || string.IsNullOrWhiteSpace(href)) return;
 
@@ -441,7 +486,8 @@ internal sealed class MainForm : Form
             await OpenMarkdownPathAsync(
                 linkedPath,
                 reason: OpenReason.Link,
-                linkSourcePath: sourcePath);
+                linkSourcePath: sourcePath,
+                historyPosition: historyPosition);
         }
         catch (Exception exception) when (
             exception is ArgumentException or NotSupportedException or PathTooLongException or UriFormatException)
@@ -450,21 +496,29 @@ internal sealed class MainForm : Form
         }
     }
 
-    private async Task OpenMapNodeAsync(string? nodeId)
+    private async Task OpenMapNodeAsync(
+        string? nodeId,
+        DocumentPosition? historyPosition)
     {
         if (nodeId is null || !_mapNodes.Contains(nodeId, StringComparer.OrdinalIgnoreCase)) return;
 
-        await OpenMarkdownPathAsync(nodeId, reason: OpenReason.Map);
+        await OpenMarkdownPathAsync(
+            nodeId,
+            reason: OpenReason.Map,
+            historyPosition: historyPosition);
     }
 
     private async Task GoBackAsync()
     {
         while (_documentHistory.Count > 0)
         {
-            string previousPath = _documentHistory.Pop();
-            if (!File.Exists(previousPath)) continue;
+            DocumentHistoryEntry previous = _documentHistory.Pop();
+            if (!File.Exists(previous.Path)) continue;
 
-            await OpenMarkdownPathAsync(previousPath, reason: OpenReason.History);
+            await OpenMarkdownPathAsync(
+                previous.Path,
+                reason: OpenReason.History,
+                restorePosition: previous.Position);
             return;
         }
     }
@@ -472,7 +526,8 @@ internal sealed class MainForm : Form
     private void UpdateHistoryAfterOpen(
         OpenReason reason,
         string? previousPath,
-        string markdownPath)
+        string markdownPath,
+        DocumentPosition? historyPosition)
     {
         if (reason == OpenReason.Direct)
         {
@@ -484,7 +539,9 @@ internal sealed class MainForm : Form
             previousPath is not null &&
             !previousPath.Equals(markdownPath, StringComparison.OrdinalIgnoreCase))
         {
-            _documentHistory.Push(previousPath);
+            _documentHistory.Push(new DocumentHistoryEntry(
+                previousPath,
+                historyPosition));
         }
     }
 
@@ -835,6 +892,7 @@ internal sealed class MainForm : Form
                         ? Path.GetFileName(path)
                         : Path.GetRelativePath(rootDirectory, path).Replace('\\', '/'),
                 inferred = isStructuredMap && !visited.Contains(path),
+                unresolved = UnresolvedStateStore.IsUnresolved(path),
                 order,
             }),
             edges = _mapEdges.Select(edge => new
@@ -869,6 +927,50 @@ internal sealed class MainForm : Form
         _webView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(message));
     }
 
+    private void SetCurrentDocumentUnresolved(JsonElement message)
+    {
+        string? markdownPath = _markdownPath;
+        if (markdownPath is null ||
+            !message.TryGetProperty("contextId", out JsonElement contextIdElement) ||
+            !contextIdElement.TryGetInt32(out int contextId) ||
+            contextId != _documentContextId ||
+            !message.TryGetProperty("unresolved", out JsonElement unresolvedElement) ||
+            unresolvedElement.ValueKind is not JsonValueKind.True and not JsonValueKind.False)
+        {
+            return;
+        }
+
+        string? error = null;
+        try
+        {
+            UnresolvedStateStore.SetUnresolved(
+                markdownPath,
+                unresolvedElement.GetBoolean());
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            error = $"The unresolved state could not be changed: {exception.Message}";
+        }
+
+        PublishCurrentDocumentUnresolvedState(error);
+        PublishMapState();
+    }
+
+    private void PublishCurrentDocumentUnresolvedState(string? error = null)
+    {
+        string? markdownPath = _markdownPath;
+        PostViewerMessage(new
+        {
+            type = "document-unresolved-state",
+            contextId = _documentContextId,
+            enabled = markdownPath is not null,
+            unresolved = markdownPath is not null &&
+                UnresolvedStateStore.IsUnresolved(markdownPath),
+            error,
+        });
+    }
+
     private void ConfigureMarkdownWatcher(string markdownPath)
     {
         DisposeMarkdownWatcher();
@@ -899,14 +1001,23 @@ internal sealed class MainForm : Form
         if (markdownPath is null) return;
 
         bool affectsCurrentFile = PathsEqual(eventArgs.FullPath, markdownPath);
+        string unresolvedPath = UnresolvedStateStore.SidecarPath(markdownPath);
+        bool affectsUnresolvedState = PathsEqual(eventArgs.FullPath, unresolvedPath);
         if (eventArgs is RenamedEventArgs renamedEventArgs)
         {
             affectsCurrentFile |= PathsEqual(renamedEventArgs.OldFullPath, markdownPath);
+            affectsUnresolvedState |= PathsEqual(
+                renamedEventArgs.OldFullPath,
+                unresolvedPath);
         }
 
         if (affectsCurrentFile)
         {
             ScheduleMarkdownReload();
+        }
+        if (affectsUnresolvedState)
+        {
+            ScheduleUnresolvedStateRefresh();
         }
     }
 
@@ -1046,6 +1157,7 @@ internal sealed class MainForm : Form
     private void ConfigureLeanMdStructure(string? metadataDirectory)
     {
         DisposeLeanMdStructureWatcher();
+        DisposeUnresolvedStateWatcher();
         _leanMdStructure = metadataDirectory is null
             ? null
             : LeanMdStructure.Load(metadataDirectory);
@@ -1064,6 +1176,61 @@ internal sealed class MainForm : Form
         _leanMdStructureWatcher.Created += OnLeanMdStructureChanged;
         _leanMdStructureWatcher.Deleted += OnLeanMdStructureChanged;
         _leanMdStructureWatcher.Renamed += OnLeanMdStructureChanged;
+
+        string? workspaceRoot = Directory.GetParent(metadataDirectory)?.FullName;
+        if (workspaceRoot is not null && Directory.Exists(workspaceRoot))
+        {
+            _unresolvedStateWatcher = new FileSystemWatcher(workspaceRoot, "*.unresolved")
+            {
+                IncludeSubdirectories = true,
+                NotifyFilter = NotifyFilters.FileName |
+                    NotifyFilters.LastWrite |
+                    NotifyFilters.CreationTime |
+                    NotifyFilters.Size,
+                EnableRaisingEvents = true,
+            };
+            _unresolvedStateWatcher.Changed += OnUnresolvedStateChanged;
+            _unresolvedStateWatcher.Created += OnUnresolvedStateChanged;
+            _unresolvedStateWatcher.Deleted += OnUnresolvedStateChanged;
+            _unresolvedStateWatcher.Renamed += OnUnresolvedStateChanged;
+            _unresolvedStateWatcher.Error += OnUnresolvedStateWatcherError;
+        }
+    }
+
+    private void OnUnresolvedStateChanged(object sender, FileSystemEventArgs eventArgs)
+    {
+        ScheduleUnresolvedStateRefresh();
+    }
+
+    private void OnUnresolvedStateWatcherError(object sender, ErrorEventArgs eventArgs)
+    {
+        ScheduleUnresolvedStateRefresh();
+    }
+
+    private void ScheduleUnresolvedStateRefresh()
+    {
+        if (IsDisposed || Disposing || !IsHandleCreated) return;
+
+        try
+        {
+            BeginInvoke(new Action(() =>
+            {
+                if (IsDisposed || Disposing) return;
+                _unresolvedStateReloadTimer.Stop();
+                _unresolvedStateReloadTimer.Start();
+            }));
+        }
+        catch (InvalidOperationException)
+        {
+            // The window closed while the file-system event was being delivered.
+        }
+    }
+
+    private void OnUnresolvedStateReloadTimerTick(object? sender, EventArgs eventArgs)
+    {
+        _unresolvedStateReloadTimer.Stop();
+        PublishCurrentDocumentUnresolvedState();
+        PublishMapState();
     }
 
     private void OnLeanMdStructureChanged(object sender, FileSystemEventArgs eventArgs)
@@ -1121,6 +1288,21 @@ internal sealed class MainForm : Form
         _leanMdStructureWatcher.Renamed -= OnLeanMdStructureChanged;
         _leanMdStructureWatcher.Dispose();
         _leanMdStructureWatcher = null;
+    }
+
+    private void DisposeUnresolvedStateWatcher()
+    {
+        _unresolvedStateReloadTimer.Stop();
+        if (_unresolvedStateWatcher is null) return;
+
+        _unresolvedStateWatcher.EnableRaisingEvents = false;
+        _unresolvedStateWatcher.Changed -= OnUnresolvedStateChanged;
+        _unresolvedStateWatcher.Created -= OnUnresolvedStateChanged;
+        _unresolvedStateWatcher.Deleted -= OnUnresolvedStateChanged;
+        _unresolvedStateWatcher.Renamed -= OnUnresolvedStateChanged;
+        _unresolvedStateWatcher.Error -= OnUnresolvedStateWatcherError;
+        _unresolvedStateWatcher.Dispose();
+        _unresolvedStateWatcher = null;
     }
 
     private static string? FindLeanMdMetadataDirectory(string markdownPath)
@@ -1506,6 +1688,8 @@ internal sealed class MainForm : Form
         _markdownReloadTimer.Dispose();
         DisposeLeanMdStructureWatcher();
         _leanMdStructureReloadTimer.Dispose();
+        DisposeUnresolvedStateWatcher();
+        _unresolvedStateReloadTimer.Dispose();
         _leanMdContextWriteTimer.Stop();
         _leanMdContextWriteTimer.Dispose();
         if (_leanMdMetadataDirectory is not null)

@@ -7,7 +7,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\desktop\LeanMD\DocumentNavigationState.cs" Link="DocumentNavigationState.cs" />
     <Compile Include="..\..\desktop\LeanMD\ExplorationMapStore.cs" Link="ExplorationMapStore.cs" />
     <Compile Include="..\..\desktop\LeanMD\LeanMdStructure.cs" Link="LeanMdStructure.cs" />
+    <Compile Include="..\..\desktop\LeanMD\UnresolvedStateStore.cs" Link="UnresolvedStateStore.cs" />
   </ItemGroup>
 </Project>

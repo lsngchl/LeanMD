@@ -15,6 +15,46 @@ try
     string intermediate = WriteDocument(workspace, "a/x/x.md");
     string deepTarget = WriteDocument(workspace, "a/x/target.md");
     Directory.CreateDirectory(metadata);
+
+    string unresolvedSidecar = UnresolvedStateStore.SidecarPath(branchA);
+    Assert(unresolvedSidecar == Path.ChangeExtension(branchA, ".unresolved"),
+        "The unresolved marker should replace the Markdown extension.");
+    Assert(!UnresolvedStateStore.IsUnresolved(branchA),
+        "A document without a marker should start resolved.");
+    UnresolvedStateStore.SetUnresolved(branchA, unresolved: true);
+    Assert(UnresolvedStateStore.IsUnresolved(branchA) && File.Exists(unresolvedSidecar),
+        "Setting unresolved should create the adjacent marker.");
+    Assert(File.ReadAllText(unresolvedSidecar) == "status: unresolved\n",
+        "New markers should use the documented readable contents.");
+    UnresolvedStateStore.SetUnresolved(branchA, unresolved: true);
+    Assert(UnresolvedStateStore.IsUnresolved(branchA),
+        "Setting an existing unresolved marker should be idempotent.");
+    UnresolvedStateStore.SetUnresolved(branchA, unresolved: false);
+    Assert(!File.Exists(unresolvedSidecar),
+        "Clearing unresolved should remove the marker.");
+
+    using (JsonDocument positionMessage = JsonDocument.Parse(
+        """{"position":{"sourceLine":17,"offset":-12.5,"scrollY":640.25}}"""))
+    {
+        Assert(DocumentPosition.TryRead(
+                positionMessage.RootElement,
+                "position",
+                out DocumentPosition position) &&
+            position.SourceLine == 17 &&
+            position.Offset == -12.5 &&
+            position.ScrollY == 640.25,
+            "Navigation positions should preserve their source anchor and pixel fallback.");
+    }
+    using (JsonDocument invalidPositionMessage = JsonDocument.Parse(
+        """{"position":{"sourceLine":0,"offset":0,"scrollY":-1}}"""))
+    {
+        Assert(!DocumentPosition.TryRead(
+                invalidPositionMessage.RootElement,
+                "position",
+                out _),
+            "Invalid navigation positions should be rejected.");
+    }
+
     WriteDependencies(
         metadata,
         "root.md",
@@ -126,7 +166,7 @@ try
         ExplorationMapStore.Load(relocatedMetadata) is null,
         "Persisted paths must not escape the document set.");
 
-    Console.WriteLine("LeanMD structure and exploration-map tests passed.");
+    Console.WriteLine("LeanMD structure, exploration-map, and unresolved-state tests passed.");
 }
 finally
 {

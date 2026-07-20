@@ -33,6 +33,7 @@ const elements = {
   preview: document.querySelector("#preview"),
   status: document.querySelector("#status"),
   themeButton: document.querySelector("#themeButton"),
+  unresolvedButton: document.querySelector("#unresolvedButton"),
   viewerLoading: document.querySelector("#viewerLoading"),
 };
 
@@ -53,6 +54,8 @@ let rendererPromise;
 let renderedMapLayout = null;
 let mapPanPointer = null;
 let currentDocumentContextId = null;
+let currentDocumentUnresolved = false;
+let unresolvedRequestPending = false;
 let viewerContextTimer = null;
 let mapCamera = {
   sessionId: null,
@@ -75,6 +78,29 @@ function loadRenderer() {
   return rendererPromise;
 }
 
+function isExternalWebHref(href) {
+  return typeof href === "string" && /^https?:\/\//iu.test(href.trim());
+}
+
+function appendExternalLinkIndicator(link) {
+  const icon = document.createElementNS(SVG_NAMESPACE, "svg");
+  icon.classList.add("external-link-icon");
+  icon.setAttribute("viewBox", "0 0 16 16");
+  icon.setAttribute("aria-hidden", "true");
+  icon.setAttribute("focusable", "false");
+  const path = document.createElementNS(SVG_NAMESPACE, "path");
+  path.setAttribute(
+    "d",
+    "M9.5 2.5h4v4M13.25 2.75 7.5 8.5M12.5 9v3.5a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1H7",
+  );
+  icon.append(path);
+
+  const hint = document.createElement("span");
+  hint.className = "visually-hidden";
+  hint.textContent = " (opens in an external browser)";
+  link.append(" ", icon, hint);
+}
+
 function renderDocument(
   source,
   name,
@@ -86,9 +112,12 @@ function renderDocument(
   elements.documentName.textContent = name;
 
   for (const link of elements.preview.querySelectorAll("a[href]")) {
-    if (/^https?:/i.test(link.href)) {
+    const href = link.getAttribute("href");
+    if (isExternalWebHref(href)) {
       link.target = "_blank";
       link.rel = "noreferrer noopener";
+      link.classList.add("external-link");
+      appendExternalLinkIndicator(link);
     }
   }
 
@@ -121,6 +150,64 @@ function leafSourceBlocks() {
   return [...elements.preview.querySelectorAll(SOURCE_BLOCK_SELECTOR)].filter(
     (element) => !element.querySelector(SOURCE_BLOCK_SELECTOR),
   );
+}
+
+function currentDocumentPosition() {
+  const scrollY = Math.max(0, window.scrollY);
+  const anchor = leafSourceBlocks()
+    .map((element) => ({
+      range: sourceRangeForElement(element),
+      bounds: element.getBoundingClientRect(),
+    }))
+    .find(
+      ({ range, bounds }) =>
+        range && bounds.width > 0 && bounds.height > 0 && bounds.bottom > 0,
+    );
+
+  return {
+    sourceLine: anchor?.range.startLine ?? null,
+    offset: anchor?.bounds.top ?? 0,
+    scrollY,
+  };
+}
+
+function restoreDocumentPosition(position) {
+  if (!position || !Number.isFinite(position.scrollY) || position.scrollY < 0) {
+    return;
+  }
+
+  let targetScrollY = position.scrollY;
+  if (Number.isInteger(position.sourceLine) && Number.isFinite(position.offset)) {
+    const candidates = leafSourceBlocks()
+      .map((element) => ({ element, range: sourceRangeForElement(element) }))
+      .filter(({ range }) => range);
+    const anchor =
+      candidates.find(
+        ({ range }) =>
+          range.startLine <= position.sourceLine && range.endLine >= position.sourceLine,
+      ) ??
+      candidates.reduce((closest, candidate) => {
+        if (!closest) return candidate;
+        return Math.abs(candidate.range.startLine - position.sourceLine) <
+          Math.abs(closest.range.startLine - position.sourceLine)
+          ? candidate
+          : closest;
+      }, null);
+    if (anchor) {
+      targetScrollY =
+        window.scrollY + anchor.element.getBoundingClientRect().top - position.offset;
+    }
+  }
+
+  const maximumScroll = Math.max(
+    0,
+    document.documentElement.scrollHeight - window.innerHeight,
+  );
+  window.scrollTo({
+    top: Math.min(maximumScroll, Math.max(0, targetScrollY)),
+    behavior: "auto",
+  });
+  scheduleViewerContextReport();
 }
 
 function currentSelectionFocus() {
@@ -315,14 +402,24 @@ function renderMap() {
     const isCurrent = node.id === mapState.current;
     const isPrevious = node.id === mapState.previous;
     const isInferred = node.inferred === true;
-    const stateDescription = isCurrent
-      ? "Current document. "
-      : isPrevious
-        ? "Previous document. "
-        : isInferred
-          ? "Unopened document inferred from the LeanMD structure. "
-          : "";
-    button.title = isPrevious ? `Previous · ${node.detail}` : node.detail;
+    const isUnresolved = node.unresolved === true;
+    const stateDescriptions = [];
+    if (isCurrent) stateDescriptions.push("Current document.");
+    if (isPrevious) stateDescriptions.push("Previous document.");
+    if (isUnresolved) stateDescriptions.push("Unresolved document.");
+    if (isInferred) {
+      stateDescriptions.push("Unopened document inferred from the LeanMD structure.");
+    }
+    const stateDescription = stateDescriptions.length
+      ? `${stateDescriptions.join(" ")} `
+      : "";
+    button.title = [
+      isUnresolved ? "Unresolved" : null,
+      isPrevious ? "Previous" : null,
+      node.detail,
+    ]
+      .filter(Boolean)
+      .join(" · ");
     button.setAttribute(
       "aria-label",
       `${node.label}. ${stateDescription}${node.detail}`,
@@ -331,6 +428,7 @@ function renderMap() {
     button.classList.toggle("is-current", isCurrent);
     button.classList.toggle("is-previous", isPrevious);
     button.classList.toggle("is-inferred", isInferred);
+    button.classList.toggle("is-unresolved", isUnresolved);
 
     const label = document.createElement("strong");
     label.textContent = node.label;
@@ -341,7 +439,11 @@ function renderMap() {
     button.addEventListener("click", () => {
       if (!webViewHost) return;
       closeMap();
-      webViewHost.postMessage({ type: "open-map-node", id: node.id });
+      webViewHost.postMessage({
+        type: "open-map-node",
+        id: node.id,
+        position: currentDocumentPosition(),
+      });
     });
 
     elements.mapNodeLayer.append(button);
@@ -573,7 +675,7 @@ async function openFile(file) {
 async function renderWithLoading(
   source,
   name,
-  { preserveScroll = false, showLoading = true } = {},
+  { preserveScroll = false, showLoading = true, restorePosition = null } = {},
 ) {
   const generation = ++renderGeneration;
   const previousScrollY = preserveScroll ? window.scrollY : 0;
@@ -605,7 +707,9 @@ async function renderWithLoading(
   if (generation !== renderGeneration) return;
 
   setDocumentLoading(false);
-  if (preserveScroll) {
+  if (restorePosition) {
+    restoreDocumentPosition(restorePosition);
+  } else if (preserveScroll) {
     const maximumScroll = Math.max(
       0,
       document.documentElement.scrollHeight - window.innerHeight,
@@ -620,6 +724,7 @@ async function renderWithLoading(
 function showEmptyState() {
   ++renderGeneration;
   currentDocumentContextId = null;
+  setDocumentUnresolvedState(false, false);
   window.clearTimeout(viewerContextTimer);
   viewerContextTimer = null;
   elements.preview.replaceChildren();
@@ -654,6 +759,20 @@ function announce(message) {
   window.setTimeout(() => {
     elements.status.textContent = message;
   }, 10);
+}
+
+function setDocumentUnresolvedState(unresolved, enabled = true) {
+  currentDocumentUnresolved = unresolved === true;
+  unresolvedRequestPending = false;
+  elements.unresolvedButton.disabled =
+    !enabled || !webViewHost || !Number.isInteger(currentDocumentContextId);
+  elements.unresolvedButton.setAttribute(
+    "aria-pressed",
+    String(currentDocumentUnresolved),
+  );
+  elements.unresolvedButton.title = currentDocumentUnresolved
+    ? "Mark this document as resolved"
+    : "Mark this document as unresolved";
 }
 
 function setTheme(theme) {
@@ -716,10 +835,32 @@ elements.preview.addEventListener("click", (event) => {
 
   event.preventDefault();
   const role = link.getAttribute("title")?.trim().toLowerCase() ?? "";
-  webViewHost.postMessage({ type: "open-markdown-link", href, role });
+  webViewHost.postMessage({
+    type: "open-markdown-link",
+    href,
+    role,
+    position: currentDocumentPosition(),
+  });
 });
 
 elements.mapButton.addEventListener("click", toggleMap);
+elements.unresolvedButton.addEventListener("click", () => {
+  if (
+    !webViewHost ||
+    unresolvedRequestPending ||
+    !Number.isInteger(currentDocumentContextId)
+  ) {
+    return;
+  }
+
+  unresolvedRequestPending = true;
+  elements.unresolvedButton.disabled = true;
+  webViewHost.postMessage({
+    type: "set-document-unresolved",
+    contextId: currentDocumentContextId,
+    unresolved: !currentDocumentUnresolved,
+  });
+});
 elements.mapCloseButton.addEventListener("click", closeMap);
 elements.mapResetButton.addEventListener("click", () => {
   if (!elements.mapResetButton.disabled) elements.mapResetDialog.showModal();
@@ -866,10 +1007,21 @@ window.addEventListener("drop", (event) => {
 });
 
 window.LeanMD = Object.freeze({
-  openMarkdown(source, name = "Untitled.md", contextId = null) {
+  openMarkdown(
+    source,
+    name = "Untitled.md",
+    contextId = null,
+    unresolved = false,
+    restorePosition = null,
+  ) {
     if (typeof source !== "string") return;
     currentDocumentContextId = Number.isInteger(contextId) ? contextId : null;
-    return renderWithLoading(source, typeof name === "string" ? name : "Untitled.md");
+    setDocumentUnresolvedState(unresolved, true);
+    return renderWithLoading(
+      source,
+      typeof name === "string" ? name : "Untitled.md",
+      { restorePosition },
+    );
   },
   reloadMarkdown(source, name = "Untitled.md", contextId = null) {
     if (typeof source !== "string") return;
@@ -896,6 +1048,8 @@ if (webViewHost) {
         message.source,
         message.name,
         message.contextId,
+        message.unresolved,
+        message.restorePosition,
       );
     } else if (message?.type === "reload-markdown") {
       await window.LeanMD.reloadMarkdown(
@@ -910,6 +1064,10 @@ if (webViewHost) {
       webViewHost.postMessage({ type: "viewer-window-painted" });
     } else if (message?.type === "map-state") {
       setMapState(message);
+    } else if (message?.type === "document-unresolved-state") {
+      if (message.contextId !== currentDocumentContextId) return;
+      setDocumentUnresolvedState(message.unresolved, message.enabled !== false);
+      if (typeof message.error === "string" && message.error) announce(message.error);
     }
   });
 

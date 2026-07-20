@@ -12,7 +12,7 @@ A small, local-first Markdown viewer that renders LaTeX written with either
 - Automated tests: `test/`
 
 The tracked package metadata, executable metadata, application manifest, and
-installer display version are kept in sync at `1.3.2`.
+installer display version are kept in sync at `1.4.0`.
 
 ## Features
 
@@ -29,6 +29,9 @@ installer display version are kept in sync at `1.3.2`.
 - Drag-to-pan map navigation with slider, button, fit, and wheel zoom controls
 - Inferred `?` nodes on the shortest structural route to newly opened documents
 - Persistent exploration maps for structured LeanMD document sets
+- Per-document unresolved toggles with composable map badges
+- External-link icons for web references that open in the system browser
+- Source-anchored reading-position restoration when navigating back
 - Code spans and fenced code blocks are excluded from math rendering
 - Raw HTML in Markdown is disabled
 
@@ -67,6 +70,12 @@ their structural parent. The viewer watches `dependencies.json`, keeps existing
 valid display paths stable, and repairs paths invalidated by dependency changes.
 Resetting retains only the current document plus its inferred route from the
 structure root. Independent recall windows keep temporary maps.
+
+An adjacent `<document>.unresolved` marker records that a document is not yet
+understood. The desktop viewer creates or removes this marker from the document
+toolbar and reflects it on every visible occurrence of the node in the map.
+Unresolved state is independent of exploration state: resetting the map may hide
+the node, but the marker remains and is shown again when the node is revealed.
 
 The document-set directory itself is the root document's folder. Every non-root
 document lives in a same-named child folder of its canonical why parent. If
@@ -112,11 +121,11 @@ The Windows desktop wrapper accepts a Markdown path as its first command-line
 argument and loads cacheable viewer assets in WebView2.
 
 ```powershell
-dotnet publish desktop/LeanMD/LeanMD.csproj -c Release -r win-x64 --self-contained false -o release/LeanMD-1.3.2
+dotnet publish desktop/LeanMD/LeanMD.csproj -c Release -r win-x64 --self-contained false -o release/LeanMD-1.4.0
 ```
 
 Official release folders use the `release/LeanMD-<version>/` naming convention.
-Replace `1.3.2` in the command above with the version being released. After
+Replace `1.4.0` in the command above with the version being released. After
 publishing, run `Install-LeanMD.cmd` from that release folder to install the app
 for the current user.
 The installer registers LeanMD as an available handler for `.md` and `.markdown`,

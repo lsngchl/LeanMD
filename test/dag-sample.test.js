@@ -32,6 +32,14 @@ function shortcutFiles(directory) {
   });
 }
 
+function unresolvedFiles(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) return unresolvedFiles(entryPath);
+    return entry.isFile() && entry.name.endsWith(".unresolved") ? [entryPath] : [];
+  });
+}
+
 test("renders every document in the configured LeanMD document set", () => {
   const renderer = new MarkdownIt({ html: false }).use(mathPlugin, {
     engine: katex,
@@ -66,6 +74,14 @@ test("stores per-document and aggregate why-only DAG metadata", () => {
   );
   assert.ok(manifest.edges.every((edge) => edge.kind === "why"));
   assert.doesNotMatch(JSON.stringify(manifest), /recall/i);
+});
+
+test("keeps unresolved markers adjacent to their Markdown documents", () => {
+  for (const markerPath of unresolvedFiles(documentSetRoot)) {
+    const markdownPath = `${markerPath.slice(0, -".unresolved".length)}.md`;
+    assert.ok(existsSync(markdownPath), `Orphan unresolved marker ${markerPath}`);
+    assert.equal(readFileSync(markerPath, "utf8").trim(), "status: unresolved");
+  }
 });
 
 test("owns each why document in a node folder and uses shortcuts for shared children", () => {
