@@ -6,7 +6,11 @@ dist-desktop/
 *.log
 desktop/**/bin/
 desktop/**/obj/
+test/**/bin/
+test/**/obj/
 release/
 **/.leanmd/current-context.json
 **/.leanmd/.current-context.*.tmp
+**/.leanmd/exploration-map.json
+**/.leanmd/.exploration-map.*.tmp
 desktop/LeanMD/Assets/LeanMD.png

@@ -823,6 +823,20 @@ a:focus-visible {
   background: color-mix(in srgb, var(--accent-soft) 58%, var(--surface));
 }
 
+.map-node.is-inferred {
+  border-style: dashed;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface-muted) 78%, transparent);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 5%);
+}
+
+.map-node.is-inferred strong {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 1.15rem;
+  font-weight: 760;
+  text-align: center;
+}
+
 .map-node.is-current {
   border-color: var(--accent);
   box-shadow:

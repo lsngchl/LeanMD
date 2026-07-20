@@ -151,7 +151,7 @@
         <header class="map-header">
           <div>
             <p class="map-eyebrow">Exploration map</p>
-            <h2 id="mapTitle">Paths you have followed</h2>
+            <h2 id="mapTitle">Structure you have revealed</h2>
           </div>
           <div class="map-actions">
             <button id="mapCloseButton" class="map-action-button" type="button">
@@ -198,7 +198,7 @@
             >
               Reset map
             </button>
-            <span>Unvisited Markdown files stay hidden · Drag to move · Mouse wheel to zoom</span>
+            <span>Question marks connect opened documents · Drag to move · Mouse wheel to zoom</span>
           </div>
           <div class="map-zoom-controls" aria-label="Map zoom controls">
             <button
@@ -248,9 +248,9 @@
             <p class="map-reset-eyebrow">Exploration map</p>
             <h3 id="mapResetTitle">Reset this map?</h3>
             <p id="mapResetDescription">
-              All discovered documents and paths will be removed from this window's map.
-              The current document will become the new starting point. Your Markdown files
-              will not be changed.
+              All visited documents will be removed from this window's map except the current
+              document. Its shortest path from the structure root will remain, with unopened
+              intermediate documents shown as question marks. Your Markdown files will not be changed.
             </p>
             <div class="map-reset-dialog-actions">
               <button class="map-dialog-cancel-button" type="submit" value="cancel" autofocus>

@@ -20,6 +20,15 @@ const desktopApplicationContext = readFileSync(
   new URL("../desktop/LeanMD/LeanMDApplicationContext.cs", import.meta.url),
   "utf8",
 );
+const explorationMapStore = readFileSync(
+  new URL("../desktop/LeanMD/ExplorationMapStore.cs", import.meta.url),
+  "utf8",
+);
+const leanMdStructure = readFileSync(
+  new URL("../desktop/LeanMD/LeanMdStructure.cs", import.meta.url),
+  "utf8",
+);
+const gitignore = readFileSync(new URL("../.gitignore", import.meta.url), "utf8");
 
 test("starts with a Markdown drop target", () => {
   assert.match(html, /id="emptyState"/);
@@ -73,10 +82,14 @@ test("opens relative Markdown links through the desktop host", () => {
   );
 });
 
-test("opens only undiscovered recall Markdown links as independent windows", () => {
+test("keeps undiscovered links in the current structure in the same window", () => {
   assert.match(desktopHost, /role\?\.Equals\(\s*"recall"/);
   assert.match(desktopHost, /bool targetWasDiscovered = _mapNodes\.Contains/);
-  assert.match(desktopHost, /if \(isRecall && !targetWasDiscovered\)/);
+  assert.match(desktopHost, /bool targetIsInCurrentStructure/);
+  assert.match(
+    desktopHost,
+    /if \(isRecall && !targetWasDiscovered && !targetIsInCurrentStructure\)/,
+  );
   assert.match(desktopHost, /_openRecallWindow\(linkedPath, this\)/);
   assert.match(desktopHost, /ApplyRecallWindowBounds\(recallSource\)/);
   assert.match(desktopProgram, /new LeanMDApplicationContext\(markdownPath\)/);
@@ -119,17 +132,44 @@ test("records live context only for structured LeanMD documents", () => {
   assert.match(appSource, /currentSelectionFocus\(\)/);
 });
 
-test("records only followed Markdown links in an exploration map", () => {
+test("projects revealed LeanMD structure into the exploration map", () => {
   assert.match(html, /id="mapButton"/);
   assert.match(html, /id="mapOverlay"/);
-  assert.match(html, /Unvisited Markdown files stay hidden/);
-  assert.match(desktopHost, /DiscoverMapLink\(linkSourcePath, markdownPath\)/);
-  assert.match(desktopHost, /case OpenReason\.Map:/);
+  assert.match(html, /Question marks connect opened documents/);
+  assert.match(desktopHost, /UpdateStructuredMapAfterOpen\(markdownPath, previousPath\)/);
+  assert.match(desktopHost, /FindShortestConnectorPath\(\s*_mapNodes/);
+  assert.match(leanMdStructure, /var pending = new Queue<string>\(\)/);
+  assert.match(leanMdStructure, /_parents\.TryGetValue\(current/);
   assert.match(desktopHost, /type = "map-state"/);
+  assert.match(desktopHost, /inferred = isStructuredMap && !visited\.Contains\(path\)/);
   assert.match(appSource, /function renderMap\(\)/);
+  assert.match(appSource, /button\.classList\.toggle\("is-inferred", isInferred\)/);
+  assert.match(stylesSource, /\.map-node\.is-inferred\s*{/);
   assert.match(appSource, /type: "open-map-node", id: node\.id/);
   assert.match(appSource, /layoutExplorationMap\(mapState\.nodes/);
   assert.doesNotMatch(appSource, /isMapPositionFree|mapPositions\.has/);
+});
+
+test("persists structured-document exploration maps across primary-window sessions", () => {
+  assert.match(desktopHost, /RestoreStructuredMap\(structure\)/);
+  assert.match(desktopHost, /ExplorationMapStore\.Load/);
+  assert.match(desktopHost, /ExplorationMapStore\.Save/);
+  assert.match(desktopHost, /_persistExplorationMap = recallSource is null/);
+  assert.match(explorationMapStore, /CurrentSchemaVersion = 2/);
+  assert.match(explorationMapStore, /DependenciesFingerprint/);
+  assert.match(explorationMapStore, /StateFileName = "exploration-map\.json"/);
+  assert.match(leanMdStructure, /Path\.GetRelativePath\(workspaceRoot, fullPath\)/);
+  assert.match(explorationMapStore, /File\.Move\(temporaryPath, statePath, overwrite: true\)/);
+  assert.match(gitignore, /\*\*\/\.leanmd\/exploration-map\.json/);
+  assert.match(gitignore, /\*\*\/\.leanmd\/\.exploration-map\.\*\.tmp/);
+});
+
+test("watches and reconciles dependency manifest changes", () => {
+  assert.match(desktopHost, /new FileSystemWatcher\(metadataDirectory, "dependencies\.json"\)/);
+  assert.match(desktopHost, /LeanMdStructureReloadDebounceMilliseconds = 250/);
+  assert.match(desktopHost, /ReconcileStructuredMap\(structure\)/);
+  assert.match(desktopHost, /structure\.ContainsEdge\(new ExplorationMapEdge/);
+  assert.match(desktopHost, /_mapDependenciesFingerprint = structure\.Fingerprint/);
 });
 
 test("does not draw a new edge when revisiting a discovered node", () => {
@@ -167,7 +207,7 @@ test("separates map reset from close and confirms before clearing the map", () =
   assert.ok(closePosition >= 0 && closePosition < footerPosition);
   assert.ok(resetPosition > footerPosition);
   assert.match(html, /id="mapResetDialog"/);
-  assert.match(html, /The current document will become the new starting point/);
+  assert.match(html, /shortest path from the structure root will remain/);
   assert.match(appSource, /mapResetDialog\.showModal\(\)/);
   assert.match(
     appSource,

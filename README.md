@@ -23,21 +23,22 @@ installer display version are kept in sync at `1.3.2`.
 - Display mathematics with `$$...$$`
 - KaTeX rendering with no remote font or script requests
 - File picker, drag and drop, light/dark theme, and print styles
-- In-app navigation for relative Markdown links and a visited-path exploration map
-- Undiscovered recall links open an independent viewer window and start a new map
+- In-app navigation for relative Markdown links and a structure-aware exploration map
+- Undiscovered links inside the current LeanMD structure reuse the current viewer window
 - Recursive map layout that keeps sibling subtrees ordered as branches grow
 - Drag-to-pan map navigation with slider, button, fit, and wheel zoom controls
-- First-discovery-only map edges and a marker for the previously viewed document
+- Inferred `?` nodes on the shortest structural route to newly opened documents
+- Persistent exploration maps for structured LeanMD document sets
 - Code spans and fenced code blocks are excluded from math rendering
 - Raw HTML in Markdown is disabled
 
 Use a standard Markdown link title to express the question that following the
 link answers. A `"why"` link answers “Why does this hold?” by opening a more
 detailed argument. A `"recall"` link answers “What was this again?” by returning
-to a definition, notation, or earlier context. An undiscovered `"recall"` target
-opens in a new window and starts a new map; otherwise the current window is
-reused. A `"why"` link and an unlabelled Markdown link continue in the current
-window.
+to a definition, notation, or earlier context. Link roles do not determine map
+topology: any target in the current `.leanmd/dependencies.json` structure opens
+in the same window and is placed by the why DAG. An undiscovered `"recall"`
+target outside that structure still opens an independent window.
 
 ```md
 [Why this holds](./details.md "why")
@@ -57,6 +58,15 @@ and selected passage are written to the ignored
 `.leanmd/current-context.json` file for local Codex context sharing. Ordinary
 Markdown files outside a structured document set are still viewed and
 automatically reloaded without creating this context file.
+
+The primary viewer window saves its partial structural projection as the ignored
+`.leanmd/exploration-map.json` file. Opening an unseen document reveals the
+shortest route from an already visible ancestor; unopened intermediate documents
+appear as `?` nodes until opened. Sibling documents remain sibling branches under
+their structural parent. The viewer watches `dependencies.json`, keeps existing
+valid display paths stable, and repairs paths invalidated by dependency changes.
+Resetting retains only the current document plus its inferred route from the
+structure root. Independent recall windows keep temporary maps.
 
 The document-set directory itself is the root document's folder. Every non-root
 document lives in a same-named child folder of its canonical why parent. If

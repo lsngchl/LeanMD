@@ -14,22 +14,30 @@ internal sealed class MainForm : Form
     private const int MarkdownReadRetryCount = 4;
     private const int MarkdownReadRetryDelayMilliseconds = 100;
     private const int LeanMdContextWriteDebounceMilliseconds = 100;
+    private const int LeanMdStructureReloadDebounceMilliseconds = 250;
     private string? _markdownPath;
     private string? _lastMarkdownDirectory;
     private readonly Action<string, MainForm> _openRecallWindow;
     private readonly bool _persistWindowState;
+    private readonly bool _persistExplorationMap;
     private readonly WebView2 _webView;
     private readonly System.Windows.Forms.Timer _markdownReloadTimer;
     private readonly System.Windows.Forms.Timer _leanMdContextWriteTimer;
+    private readonly System.Windows.Forms.Timer _leanMdStructureReloadTimer;
     private readonly string _contextWindowId = Guid.NewGuid().ToString("N");
     private readonly List<string> _mapNodes = [];
     private readonly List<(string From, string To)> _mapEdges = [];
+    private readonly List<string> _mapVisitedNodes = [];
     private readonly Stack<string> _documentHistory = new();
     private string? _mapRootPath;
     private string? _previousMapPath;
+    private string? _mapMetadataDirectory;
+    private string? _mapDependenciesFingerprint;
     private int _mapSessionId;
     private Task<string>? _initialMarkdownReadTask;
     private FileSystemWatcher? _markdownWatcher;
+    private FileSystemWatcher? _leanMdStructureWatcher;
+    private LeanMdStructure? _leanMdStructure;
     private string? _lastRenderedSource;
     private string? _leanMdMetadataDirectory;
     private int _documentContextId;
@@ -68,6 +76,7 @@ internal sealed class MainForm : Form
             : Path.GetDirectoryName(markdownPath);
         _openRecallWindow = openRecallWindow;
         _persistWindowState = recallSource is null;
+        _persistExplorationMap = recallSource is null;
         Text = "LeanMD";
         MinimumSize = new Size(720, 540);
         BackColor = Color.FromArgb(243, 241, 236);
@@ -95,6 +104,11 @@ internal sealed class MainForm : Form
             Interval = LeanMdContextWriteDebounceMilliseconds,
         };
         _leanMdContextWriteTimer.Tick += OnLeanMdContextWriteTimerTick;
+        _leanMdStructureReloadTimer = new System.Windows.Forms.Timer
+        {
+            Interval = LeanMdStructureReloadDebounceMilliseconds,
+        };
+        _leanMdStructureReloadTimer.Tick += OnLeanMdStructureReloadTimerTick;
 
         Controls.Add(_webView);
         Shown += OnShown;
@@ -253,7 +267,7 @@ internal sealed class MainForm : Form
                 case "reset-map":
                     if (_markdownPath is not null)
                     {
-                        StartMap(_markdownPath);
+                        ResetMap(_markdownPath);
                     }
                     break;
                 case "viewer-context":
@@ -405,7 +419,9 @@ internal sealed class MainForm : Form
             bool targetWasDiscovered = _mapNodes.Contains(
                 linkedPath,
                 StringComparer.OrdinalIgnoreCase);
-            if (isRecall && !targetWasDiscovered)
+            bool targetIsInCurrentStructure =
+                _leanMdStructure?.ContainsDocument(linkedPath) == true;
+            if (isRecall && !targetWasDiscovered && !targetIsInCurrentStructure)
             {
                 if (!File.Exists(linkedPath))
                 {
@@ -478,13 +494,19 @@ internal sealed class MainForm : Form
         string? previousPath,
         string? linkSourcePath)
     {
+        if (_leanMdStructure?.ContainsDocument(markdownPath) == true)
+        {
+            UpdateStructuredMapAfterOpen(markdownPath, previousPath);
+            return;
+        }
+
         switch (reason)
         {
             case OpenReason.Direct:
-                StartMap(markdownPath);
+                StartUnstructuredMap(markdownPath);
                 return;
             case OpenReason.Link when linkSourcePath is not null:
-                DiscoverMapLink(linkSourcePath, markdownPath);
+                DiscoverUnstructuredMapLink(linkSourcePath, markdownPath);
                 return;
             case OpenReason.Map:
             case OpenReason.History:
@@ -494,40 +516,242 @@ internal sealed class MainForm : Form
         }
     }
 
-    private void StartMap(string rootPath)
+    private void UpdateStructuredMapAfterOpen(
+        string markdownPath,
+        string? previousPath)
+    {
+        LeanMdStructure structure = _leanMdStructure!;
+        bool sameMap = _mapMetadataDirectory is not null &&
+            PathsEqual(_mapMetadataDirectory, structure.MetadataDirectory) &&
+            _mapRootPath is not null &&
+            PathsEqual(_mapRootPath, structure.RootPath) &&
+            _mapNodes.Count > 0;
+
+        if (!sameMap)
+        {
+            RestoreStructuredMap(structure);
+        }
+
+        ReconcileStructuredMap(structure);
+        RevealStructuredPath(structure, markdownPath);
+        MarkMapNodeVisited(markdownPath);
+        SetPreviousMapNode(previousPath, markdownPath);
+        PersistMapState();
+        PublishMapState();
+    }
+
+    private void RestoreStructuredMap(LeanMdStructure structure)
+    {
+        _mapSessionId++;
+        _mapRootPath = structure.RootPath;
+        _mapMetadataDirectory = structure.MetadataDirectory;
+        _mapDependenciesFingerprint = structure.Fingerprint;
+        _previousMapPath = null;
+        _documentHistory.Clear();
+        _mapNodes.Clear();
+        _mapEdges.Clear();
+        _mapVisitedNodes.Clear();
+
+        ExplorationMapState? restored = _persistExplorationMap
+            ? ExplorationMapStore.Load(structure.MetadataDirectory)
+            : null;
+        if (restored is not null && PathsEqual(restored.RootPath, structure.RootPath))
+        {
+            _mapNodes.AddRange(restored.Nodes);
+            _mapEdges.AddRange(restored.Edges.Select(edge => (edge.From, edge.To)));
+            _mapVisitedNodes.AddRange(restored.VisitedNodes);
+            _mapDependenciesFingerprint = restored.DependenciesFingerprint;
+        }
+        else
+        {
+            _mapNodes.Add(structure.RootPath);
+        }
+    }
+
+    private void ReconcileStructuredMap(LeanMdStructure structure)
+    {
+        List<string> visited = _mapVisitedNodes
+            .Where(structure.ContainsDocument)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (_mapRootPath is null || !PathsEqual(_mapRootPath, structure.RootPath))
+        {
+            _mapSessionId++;
+            _mapRootPath = structure.RootPath;
+            _mapNodes.Clear();
+            _mapNodes.Add(structure.RootPath);
+            _mapEdges.Clear();
+            _mapVisitedNodes.Clear();
+            foreach (string path in visited)
+            {
+                RevealStructuredPath(structure, path);
+                MarkMapNodeVisited(path);
+            }
+            _mapDependenciesFingerprint = structure.Fingerprint;
+            return;
+        }
+
+        var candidateNodes = new HashSet<string>(
+            _mapNodes.Where(structure.ContainsDocument),
+            StringComparer.OrdinalIgnoreCase)
+        {
+            structure.RootPath,
+        };
+        List<(string From, string To)> candidateEdges = _mapEdges
+            .Where(edge =>
+                candidateNodes.Contains(edge.From) &&
+                candidateNodes.Contains(edge.To) &&
+                structure.ContainsEdge(new ExplorationMapEdge(edge.From, edge.To)))
+            .Distinct()
+            .ToList();
+
+        var reachable = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            structure.RootPath,
+        };
+        bool added;
+        do
+        {
+            added = false;
+            foreach ((string from, string to) in candidateEdges)
+            {
+                if (reachable.Contains(from) && reachable.Add(to)) added = true;
+            }
+        }
+        while (added);
+
+        var required = new HashSet<string>(
+            visited.Where(reachable.Contains),
+            StringComparer.OrdinalIgnoreCase)
+        {
+            structure.RootPath,
+        };
+        do
+        {
+            added = false;
+            foreach ((string from, string to) in candidateEdges)
+            {
+                if (required.Contains(to) && required.Add(from)) added = true;
+            }
+        }
+        while (added);
+
+        _mapNodes.RemoveAll(path => !required.Contains(path));
+        if (!_mapNodes.Contains(structure.RootPath, StringComparer.OrdinalIgnoreCase))
+        {
+            _mapNodes.Insert(0, structure.RootPath);
+        }
+        _mapEdges.Clear();
+        _mapEdges.AddRange(candidateEdges.Where(edge =>
+            required.Contains(edge.From) && required.Contains(edge.To)));
+        _mapVisitedNodes.Clear();
+        _mapVisitedNodes.AddRange(visited.Where(required.Contains));
+
+        foreach (string path in visited.Where(path => !required.Contains(path)))
+        {
+            RevealStructuredPath(structure, path);
+            MarkMapNodeVisited(path);
+        }
+
+        _mapMetadataDirectory = structure.MetadataDirectory;
+        _mapDependenciesFingerprint = structure.Fingerprint;
+    }
+
+    private void RevealStructuredPath(LeanMdStructure structure, string targetPath)
+    {
+        IReadOnlyList<string>? connector = structure.FindShortestConnectorPath(
+            _mapNodes,
+            targetPath);
+        if (connector is null) return;
+
+        foreach (string path in connector)
+        {
+            if (!_mapNodes.Contains(path, StringComparer.OrdinalIgnoreCase))
+            {
+                _mapNodes.Add(path);
+            }
+        }
+        for (int index = 1; index < connector.Count; index++)
+        {
+            var edge = (From: connector[index - 1], To: connector[index]);
+            if (!_mapEdges.Any(existing =>
+                PathsEqual(existing.From, edge.From) && PathsEqual(existing.To, edge.To)))
+            {
+                _mapEdges.Add(edge);
+            }
+        }
+    }
+
+    private void MarkMapNodeVisited(string path)
+    {
+        if (!_mapVisitedNodes.Contains(path, StringComparer.OrdinalIgnoreCase))
+        {
+            _mapVisitedNodes.Add(path);
+        }
+    }
+
+    private void ResetMap(string currentPath)
+    {
+        if (_leanMdStructure?.ContainsDocument(currentPath) == true)
+        {
+            LeanMdStructure structure = _leanMdStructure;
+            _mapSessionId++;
+            _mapRootPath = structure.RootPath;
+            _mapMetadataDirectory = structure.MetadataDirectory;
+            _mapDependenciesFingerprint = structure.Fingerprint;
+            _previousMapPath = null;
+            _documentHistory.Clear();
+            _mapNodes.Clear();
+            _mapNodes.Add(structure.RootPath);
+            _mapEdges.Clear();
+            _mapVisitedNodes.Clear();
+            RevealStructuredPath(structure, currentPath);
+            MarkMapNodeVisited(currentPath);
+            PersistMapState();
+            PublishMapState();
+            return;
+        }
+
+        StartUnstructuredMap(currentPath);
+    }
+
+    private void StartUnstructuredMap(string rootPath)
     {
         _mapSessionId++;
         _mapRootPath = rootPath;
+        _mapMetadataDirectory = null;
+        _mapDependenciesFingerprint = null;
         _previousMapPath = null;
         _documentHistory.Clear();
         _mapNodes.Clear();
-        _mapEdges.Clear();
         _mapNodes.Add(rootPath);
-        PublishMapState();
-    }
-
-    private void ClearMap()
-    {
-        _mapSessionId++;
-        _mapRootPath = null;
-        _previousMapPath = null;
-        _documentHistory.Clear();
-        _mapNodes.Clear();
         _mapEdges.Clear();
+        _mapVisitedNodes.Clear();
+        _mapVisitedNodes.Add(rootPath);
         PublishMapState();
     }
 
-    private void DiscoverMapLink(string sourcePath, string targetPath)
+    private void DiscoverUnstructuredMapLink(string sourcePath, string targetPath)
     {
-        if (_mapRootPath is null ||
-            !_mapNodes.Contains(sourcePath, StringComparer.OrdinalIgnoreCase))
+        if (_mapRootPath is null || _mapNodes.Count == 0)
         {
             _mapSessionId++;
             _mapRootPath = sourcePath;
+            _mapMetadataDirectory = null;
+            _mapDependenciesFingerprint = null;
             _previousMapPath = null;
             _mapNodes.Clear();
             _mapEdges.Clear();
+            _mapVisitedNodes.Clear();
             _mapNodes.Add(sourcePath);
+            _mapVisitedNodes.Add(sourcePath);
+        }
+        else if (!_mapNodes.Contains(sourcePath, StringComparer.OrdinalIgnoreCase))
+        {
+            _previousMapPath = null;
+            PublishMapState();
+            return;
         }
 
         SetPreviousMapNode(sourcePath, targetPath);
@@ -544,7 +768,29 @@ internal sealed class MainForm : Form
             }
         }
 
+        MarkMapNodeVisited(targetPath);
         PublishMapState();
+    }
+
+    private void PersistMapState()
+    {
+        if (!_persistExplorationMap ||
+            _mapMetadataDirectory is null ||
+            _mapRootPath is null ||
+            _mapNodes.Count == 0)
+        {
+            return;
+        }
+
+        ExplorationMapStore.Save(
+            _mapMetadataDirectory,
+            new ExplorationMapState(
+                _mapRootPath,
+                _mapNodes.ToArray(),
+                _mapEdges.Select(edge =>
+                    new ExplorationMapEdge(edge.From, edge.To)).ToArray(),
+                _mapVisitedNodes.ToArray(),
+                _mapDependenciesFingerprint));
     }
 
     private void SetPreviousMapNode(string? previousPath, string currentPath)
@@ -558,9 +804,15 @@ internal sealed class MainForm : Form
 
     private void PublishMapState()
     {
-        string? rootDirectory = _mapRootPath is null
-            ? null
-            : Path.GetDirectoryName(_mapRootPath);
+        string? rootDirectory = _mapMetadataDirectory is null
+            ? _mapRootPath is null
+                ? null
+                : Path.GetDirectoryName(_mapRootPath)
+            : Directory.GetParent(_mapMetadataDirectory)?.FullName;
+        bool isStructuredMap = _mapMetadataDirectory is not null;
+        var visited = new HashSet<string>(
+            _mapVisitedNodes,
+            StringComparer.OrdinalIgnoreCase);
 
         PostViewerMessage(new
         {
@@ -572,12 +824,17 @@ internal sealed class MainForm : Form
             nodes = _mapNodes.Select((path, order) => new
             {
                 id = path,
-                label = Path.GetFileNameWithoutExtension(path).Replace('_', ' '),
-                detail = path.Equals(_mapRootPath, StringComparison.OrdinalIgnoreCase)
-                    ? "Starting document"
+                label = isStructuredMap && !visited.Contains(path)
+                    ? "?"
+                    : Path.GetFileNameWithoutExtension(path).Replace('_', ' '),
+                detail = isStructuredMap && !visited.Contains(path)
+                    ? "Unopened structure node"
+                    : path.Equals(_mapRootPath, StringComparison.OrdinalIgnoreCase)
+                    ? isStructuredMap ? "Structure root" : "Starting document"
                     : rootDirectory is null
                         ? Path.GetFileName(path)
                         : Path.GetRelativePath(rootDirectory, path).Replace('\\', '/'),
+                inferred = isStructuredMap && !visited.Contains(path),
                 order,
             }),
             edges = _mapEdges.Select(edge => new
@@ -761,12 +1018,21 @@ internal sealed class MainForm : Form
     {
         string? previousMetadataDirectory = _leanMdMetadataDirectory;
         string? nextMetadataDirectory = FindLeanMdMetadataDirectory(markdownPath);
+        bool metadataDirectoryChanged =
+            previousMetadataDirectory is null != nextMetadataDirectory is null ||
+            previousMetadataDirectory is not null &&
+            nextMetadataDirectory is not null &&
+            !PathsEqual(previousMetadataDirectory, nextMetadataDirectory);
 
         _leanMdContextWriteTimer.Stop();
         _documentContextId += 1;
         _viewerViewport = null;
         _viewerFocus = null;
         _leanMdMetadataDirectory = nextMetadataDirectory;
+        if (metadataDirectoryChanged || _leanMdStructureWatcher is null)
+        {
+            ConfigureLeanMdStructure(nextMetadataDirectory);
+        }
 
         if (previousMetadataDirectory is not null &&
             !PathsEqual(previousMetadataDirectory, nextMetadataDirectory))
@@ -775,6 +1041,86 @@ internal sealed class MainForm : Form
         }
 
         ScheduleLeanMdContextWrite();
+    }
+
+    private void ConfigureLeanMdStructure(string? metadataDirectory)
+    {
+        DisposeLeanMdStructureWatcher();
+        _leanMdStructure = metadataDirectory is null
+            ? null
+            : LeanMdStructure.Load(metadataDirectory);
+        if (metadataDirectory is null || !Directory.Exists(metadataDirectory)) return;
+
+        _leanMdStructureWatcher = new FileSystemWatcher(metadataDirectory, "dependencies.json")
+        {
+            IncludeSubdirectories = false,
+            NotifyFilter = NotifyFilters.FileName |
+                NotifyFilters.LastWrite |
+                NotifyFilters.CreationTime |
+                NotifyFilters.Size,
+            EnableRaisingEvents = true,
+        };
+        _leanMdStructureWatcher.Changed += OnLeanMdStructureChanged;
+        _leanMdStructureWatcher.Created += OnLeanMdStructureChanged;
+        _leanMdStructureWatcher.Deleted += OnLeanMdStructureChanged;
+        _leanMdStructureWatcher.Renamed += OnLeanMdStructureChanged;
+    }
+
+    private void OnLeanMdStructureChanged(object sender, FileSystemEventArgs eventArgs)
+    {
+        try
+        {
+            BeginInvoke(new Action(() =>
+            {
+                if (IsDisposed || Disposing) return;
+                _leanMdStructureReloadTimer.Stop();
+                _leanMdStructureReloadTimer.Start();
+            }));
+        }
+        catch (InvalidOperationException)
+        {
+            // The window closed while the file-system event was being delivered.
+        }
+    }
+
+    private void OnLeanMdStructureReloadTimerTick(object? sender, EventArgs eventArgs)
+    {
+        _leanMdStructureReloadTimer.Stop();
+        string? metadataDirectory = _leanMdMetadataDirectory;
+        if (metadataDirectory is null) return;
+
+        LeanMdStructure? structure = LeanMdStructure.Load(metadataDirectory);
+        if (structure is null) return;
+
+        _leanMdStructure = structure;
+        if (_mapMetadataDirectory is null ||
+            !PathsEqual(_mapMetadataDirectory, structure.MetadataDirectory))
+        {
+            return;
+        }
+
+        ReconcileStructuredMap(structure);
+        if (_markdownPath is not null && structure.ContainsDocument(_markdownPath))
+        {
+            RevealStructuredPath(structure, _markdownPath);
+            MarkMapNodeVisited(_markdownPath);
+        }
+        PersistMapState();
+        PublishMapState();
+    }
+
+    private void DisposeLeanMdStructureWatcher()
+    {
+        _leanMdStructureReloadTimer.Stop();
+        if (_leanMdStructureWatcher is null) return;
+
+        _leanMdStructureWatcher.EnableRaisingEvents = false;
+        _leanMdStructureWatcher.Changed -= OnLeanMdStructureChanged;
+        _leanMdStructureWatcher.Created -= OnLeanMdStructureChanged;
+        _leanMdStructureWatcher.Deleted -= OnLeanMdStructureChanged;
+        _leanMdStructureWatcher.Renamed -= OnLeanMdStructureChanged;
+        _leanMdStructureWatcher.Dispose();
+        _leanMdStructureWatcher = null;
     }
 
     private static string? FindLeanMdMetadataDirectory(string markdownPath)
@@ -1158,6 +1504,8 @@ internal sealed class MainForm : Form
         _formIsClosing = true;
         DisposeMarkdownWatcher();
         _markdownReloadTimer.Dispose();
+        DisposeLeanMdStructureWatcher();
+        _leanMdStructureReloadTimer.Dispose();
         _leanMdContextWriteTimer.Stop();
         _leanMdContextWriteTimer.Dispose();
         if (_leanMdMetadataDirectory is not null)

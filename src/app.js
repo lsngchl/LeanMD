@@ -314,11 +314,14 @@ function renderMap() {
     button.style.transform = `translate(${position.x}px, ${position.y}px)`;
     const isCurrent = node.id === mapState.current;
     const isPrevious = node.id === mapState.previous;
+    const isInferred = node.inferred === true;
     const stateDescription = isCurrent
       ? "Current document. "
       : isPrevious
         ? "Previous document. "
-        : "";
+        : isInferred
+          ? "Unopened document inferred from the LeanMD structure. "
+          : "";
     button.title = isPrevious ? `Previous · ${node.detail}` : node.detail;
     button.setAttribute(
       "aria-label",
@@ -327,6 +330,7 @@ function renderMap() {
     button.classList.toggle("is-root", node.id === mapState.root);
     button.classList.toggle("is-current", isCurrent);
     button.classList.toggle("is-previous", isPrevious);
+    button.classList.toggle("is-inferred", isInferred);
 
     const label = document.createElement("strong");
     label.textContent = node.label;
