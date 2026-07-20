@@ -487,10 +487,14 @@ a:focus-visible {
 .markdown-body ol,
 .markdown-body blockquote,
 .markdown-body pre,
-.markdown-body table,
-.markdown-body .math-display {
+.markdown-body table {
   margin-top: 1.05em;
   margin-bottom: 1.05em;
+}
+
+.markdown-body .math-display {
+  margin-top: 0.55em;
+  margin-bottom: 0.55em;
 }
 
 .markdown-body a {
@@ -587,8 +591,12 @@ a:focus-visible {
   max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 0.55rem 0.25rem;
+  padding: 0.15rem 0.25rem;
   text-align: center;
+}
+
+.markdown-body .math-display > .katex-display {
+  margin-block: 0;
 }
 
 .math-error {

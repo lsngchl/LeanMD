@@ -12,7 +12,7 @@ A small, local-first Markdown viewer that renders LaTeX written with either
 - Automated tests: `test/`
 
 The tracked package metadata, executable metadata, application manifest, and
-installer display version are kept in sync at `1.3.1`.
+installer display version are kept in sync at `1.3.2`.
 
 ## Features
 
@@ -95,11 +95,11 @@ The Windows desktop wrapper accepts a Markdown path as its first command-line
 argument and loads cacheable viewer assets in WebView2.
 
 ```powershell
-dotnet publish desktop/LeanMD/LeanMD.csproj -c Release -r win-x64 --self-contained false -o release/LeanMD-1.3.1
+dotnet publish desktop/LeanMD/LeanMD.csproj -c Release -r win-x64 --self-contained false -o release/LeanMD-1.3.2
 ```
 
 Official release folders use the `release/LeanMD-<version>/` naming convention.
-Replace `1.3.1` in the command above with the version being released. After
+Replace `1.3.2` in the command above with the version being released. After
 publishing, run `Install-LeanMD.cmd` from that release folder to install the app
 for the current user.
 The installer registers LeanMD as an available handler for `.md` and `.markdown`,

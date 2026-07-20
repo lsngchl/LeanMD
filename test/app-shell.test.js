@@ -37,6 +37,21 @@ test("does not calculate or display document statistics", () => {
   );
 });
 
+test("keeps display mathematics close to the surrounding text", () => {
+  assert.match(
+    stylesSource,
+    /\.markdown-body \.math-display\s*{[^}]*margin-top: 0\.55em;[^}]*margin-bottom: 0\.55em;/s,
+  );
+  assert.match(
+    stylesSource,
+    /\.math-display\s*{[^}]*padding: 0\.15rem 0\.25rem;/s,
+  );
+  assert.match(
+    stylesSource,
+    /\.markdown-body \.math-display > \.katex-display\s*{[^}]*margin-block: 0;/s,
+  );
+});
+
 test("does not bundle a Markdown sample into the app", () => {
   assert.doesNotMatch(html, /sampleButton|Reload sample/);
   assert.doesNotMatch(
