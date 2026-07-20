@@ -1,0 +1,55 @@
+{
+  "root": "all_powered_distance_sumset_interval_theorem.md",
+  "edges": [
+    {
+      "from": "all_powered_distance_sumset_interval_theorem.md",
+      "to": "chain_rotational_curvature/chain_rotational_curvature.md",
+      "kind": "why"
+    },
+    {
+      "from": "all_powered_distance_sumset_interval_theorem.md",
+      "to": "localized_two_set_configuration_theorem/localized_two_set_configuration_theorem.md",
+      "kind": "why"
+    },
+    {
+      "from": "chain_rotational_curvature/chain_rotational_curvature.md",
+      "to": "chain_rotational_curvature/bent_chain_nondegeneracy/bent_chain_nondegeneracy.md",
+      "kind": "why"
+    },
+    {
+      "from": "chain_rotational_curvature/chain_rotational_curvature.md",
+      "to": "chain_rotational_curvature/straight_chain_nondegeneracy/straight_chain_nondegeneracy.md",
+      "kind": "why"
+    },
+    {
+      "from": "localized_two_set_configuration_theorem/localized_two_set_configuration_theorem.md",
+      "to": "localized_two_set_configuration_theorem/conormal_canonical_relation/conormal_canonical_relation.md",
+      "kind": "why"
+    },
+    {
+      "from": "localized_two_set_configuration_theorem/localized_two_set_configuration_theorem.md",
+      "to": "localized_two_set_configuration_theorem/inverse_function_theorem_for_smooth_manifolds/inverse_function_theorem_for_smooth_manifolds.md",
+      "kind": "why"
+    },
+    {
+      "from": "localized_two_set_configuration_theorem/localized_two_set_configuration_theorem.md",
+      "to": "localized_two_set_configuration_theorem/sobolev_smoothing_for_generalized_radon_transforms/sobolev_smoothing_for_generalized_radon_transforms.md",
+      "kind": "why"
+    },
+    {
+      "from": "localized_two_set_configuration_theorem/localized_two_set_configuration_theorem.md",
+      "to": "localized_two_set_configuration_theorem/two_set_configuration_theorem/two_set_configuration_theorem.md",
+      "kind": "why"
+    },
+    {
+      "from": "chain_rotational_curvature/bent_chain_nondegeneracy/bent_chain_nondegeneracy.md",
+      "to": "chain_rotational_curvature/bent_chain_nondegeneracy/bent_chain_mixed_hessian_kernel/bent_chain_mixed_hessian_kernel.md",
+      "kind": "why"
+    },
+    {
+      "from": "localized_two_set_configuration_theorem/sobolev_smoothing_for_generalized_radon_transforms/sobolev_smoothing_for_generalized_radon_transforms.md",
+      "to": "localized_two_set_configuration_theorem/sobolev_smoothing_for_generalized_radon_transforms/fio_sobolev_theorem/fio_sobolev_theorem.md",
+      "kind": "why"
+    }
+  ]
+}
