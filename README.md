@@ -64,12 +64,19 @@ another parent uses that document, the second location contains a portable
 `shortcut.leanmd.json` pointing to the canonical Markdown file instead of a
 duplicate. OS-specific `.lnk` and symbolic links are not required.
 
-Validate the included document set, or regenerate its document sidecars and complete manifest
-after editing why links, with:
+Validate any document set, or regenerate its document sidecars and complete manifest after
+editing why links, by passing its path:
 
 ```sh
-node leanmd-example/validate-why-dag.js leanmd-example/continuous_interval_dag
-node leanmd-example/validate-why-dag.js leanmd-example/continuous_interval_dag --write
+node leanmd-example/validate-why-dag.js path/to/document_set
+node leanmd-example/validate-why-dag.js path/to/document_set --write
+```
+
+Run the complete test suite against one or more document sets with:
+
+```sh
+npm test -- path/to/document_set
+npm test -- path/to/first_document_set path/to/second_document_set
 ```
 
 ## Run locally

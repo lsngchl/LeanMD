@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node leanmd-example/validate-why-dag.js leanmd-example/continuous_interval_dag && node --test test/app-shell.test.js test/dag-sample.test.js test/map-layout.test.js test/math-plugin.test.js"
+    "test": "node test/run-tests.js"
   },
   "dependencies": {
     "katex": "^0.16.22",

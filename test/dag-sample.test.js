@@ -2,14 +2,17 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 import katex from "katex";
 import MarkdownIt from "markdown-it";
 import { mathPlugin } from "../src/math-plugin.js";
 
-const documentSetRoot = fileURLToPath(
-  new URL("../leanmd-example/continuous_interval_dag/", import.meta.url),
-);
+const configuredDocumentSet = process.env.LEANMD_DOCUMENT_SET;
+if (!configuredDocumentSet) {
+  throw new Error(
+    "LEANMD_DOCUMENT_SET is required; run npm test -- <document-set-directory>",
+  );
+}
+const documentSetRoot = path.resolve(configuredDocumentSet);
 
 function markdownFiles(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -29,14 +32,14 @@ function shortcutFiles(directory) {
   });
 }
 
-test("renders every document in the complete LeanMD example", () => {
+test("renders every document in the configured LeanMD document set", () => {
   const renderer = new MarkdownIt({ html: false }).use(mathPlugin, {
     engine: katex,
     katexOptions: { strict: false },
   });
   const files = markdownFiles(documentSetRoot);
 
-  assert.equal(files.length, 8);
+  assert.ok(files.length > 0, "Expected at least one Markdown document");
   for (const file of files) {
     const html = renderer.render(readFileSync(file, "utf8"));
     assert.match(html, /<h1>/, `Expected a level-one heading in ${file}`);
@@ -67,10 +70,12 @@ test("stores per-document and aggregate why-only DAG metadata", () => {
 
 test("owns each why document in a node folder and uses shortcuts for shared children", () => {
   const files = markdownFiles(documentSetRoot);
-  const rootDocument = path.join(
-    documentSetRoot,
-    "continuous_interval_consequences.md",
+  const manifest = JSON.parse(
+    readFileSync(path.join(documentSetRoot, ".leanmd", "dependencies.json"), "utf8"),
   );
+  const rootDocument = path.join(documentSetRoot, manifest.root);
+
+  assert.ok(existsSync(rootDocument), `Missing root document ${manifest.root}`);
 
   for (const file of files) {
     if (file === rootDocument) continue;
@@ -83,7 +88,15 @@ test("owns each why document in a node folder and uses shortcuts for shared chil
   }
 
   const shortcuts = shortcutFiles(documentSetRoot);
-  assert.equal(shortcuts.length, 2);
+  const expectedShortcutCount = manifest.edges.filter((edge) => {
+    const sourceDirectory = path.posix.dirname(edge.from);
+    const targetParentDirectory = path.posix.dirname(
+      path.posix.dirname(edge.to),
+    );
+    return sourceDirectory !== targetParentDirectory;
+  }).length;
+
+  assert.equal(shortcuts.length, expectedShortcutCount);
   for (const shortcutPath of shortcuts) {
     const shortcut = JSON.parse(readFileSync(shortcutPath, "utf8"));
     assert.equal(shortcut.kind, "why-shortcut");
