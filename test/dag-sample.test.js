@@ -7,8 +7,8 @@ import katex from "katex";
 import MarkdownIt from "markdown-it";
 import { mathPlugin } from "../src/math-plugin.js";
 
-const sampleRoot = fileURLToPath(
-  new URL("../samples/continuous_interval_dag/", import.meta.url),
+const documentSetRoot = fileURLToPath(
+  new URL("../leanmd-example/continuous_interval_dag/", import.meta.url),
 );
 
 function markdownFiles(directory) {
@@ -29,14 +29,14 @@ function shortcutFiles(directory) {
   });
 }
 
-test("renders every document in the continuous-interval DAG sample", () => {
+test("renders every document in the complete LeanMD example", () => {
   const renderer = new MarkdownIt({ html: false }).use(mathPlugin, {
     engine: katex,
     katexOptions: { strict: false },
   });
-  const files = markdownFiles(sampleRoot);
+  const files = markdownFiles(documentSetRoot);
 
-  assert.equal(files.length, 6);
+  assert.equal(files.length, 8);
   for (const file of files) {
     const html = renderer.render(readFileSync(file, "utf8"));
     assert.match(html, /<h1>/, `Expected a level-one heading in ${file}`);
@@ -45,29 +45,32 @@ test("renders every document in the continuous-interval DAG sample", () => {
 });
 
 test("stores per-document and aggregate why-only DAG metadata", () => {
-  const files = markdownFiles(sampleRoot);
+  const files = markdownFiles(documentSetRoot);
 
   for (const file of files) {
     const sidecarPath = `${file}.leanmd.json`;
     assert.ok(existsSync(sidecarPath), `Missing why sidecar for ${file}`);
 
     const sidecar = JSON.parse(readFileSync(sidecarPath, "utf8"));
-    const document = path.relative(sampleRoot, file).replaceAll("\\", "/");
+    const document = path.relative(documentSetRoot, file).replaceAll("\\", "/");
     assert.equal(sidecar.document, document);
     assert.ok(Array.isArray(sidecar.whyLinks));
     assert.equal(Object.hasOwn(sidecar, "recallLinks"), false);
   }
 
   const manifest = JSON.parse(
-    readFileSync(path.join(sampleRoot, ".leanmd", "dependencies.json"), "utf8"),
+    readFileSync(path.join(documentSetRoot, ".leanmd", "dependencies.json"), "utf8"),
   );
   assert.ok(manifest.edges.every((edge) => edge.kind === "why"));
   assert.doesNotMatch(JSON.stringify(manifest), /recall/i);
 });
 
 test("owns each why document in a node folder and uses shortcuts for shared children", () => {
-  const files = markdownFiles(sampleRoot);
-  const rootDocument = path.join(sampleRoot, "continuous_interval_consequences.md");
+  const files = markdownFiles(documentSetRoot);
+  const rootDocument = path.join(
+    documentSetRoot,
+    "continuous_interval_consequences.md",
+  );
 
   for (const file of files) {
     if (file === rootDocument) continue;
@@ -79,13 +82,13 @@ test("owns each why document in a node folder and uses shortcuts for shared chil
     assert.doesNotMatch(file, /[\\/](?:arguments|shared)[\\/]/);
   }
 
-  const shortcuts = shortcutFiles(sampleRoot);
+  const shortcuts = shortcutFiles(documentSetRoot);
   assert.equal(shortcuts.length, 2);
   for (const shortcutPath of shortcuts) {
     const shortcut = JSON.parse(readFileSync(shortcutPath, "utf8"));
     assert.equal(shortcut.kind, "why-shortcut");
-    assert.ok(existsSync(path.join(sampleRoot, shortcut.source)));
-    assert.ok(existsSync(path.join(sampleRoot, shortcut.target)));
+    assert.ok(existsSync(path.join(documentSetRoot, shortcut.source)));
+    assert.ok(existsSync(path.join(documentSetRoot, shortcut.target)));
     assert.equal(Object.hasOwn(shortcut, "recall"), false);
   }
 });

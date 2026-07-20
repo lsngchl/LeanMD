@@ -1,7 +1,7 @@
 # 연속성의 수열 판정
 
 함수 \(f:[a,b]\to\mathbb{R}\)가
-[루트 문서의 의미에서 연속](../../continuous_interval_consequences.md "recall")이고
+[연속](../../continuous_interval_consequences.md "recall")이고
 수열 \((x_n)\)이 \([a,b]\) 안에서 \(x\in[a,b]\)로 수렴하면
 
 \[

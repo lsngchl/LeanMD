@@ -7,15 +7,15 @@ import {
 } from "node:fs";
 import path from "node:path";
 
-const sampleArgument = process.argv
+const documentSetArgument = process.argv
   .slice(2)
   .find((argument) => !argument.startsWith("--"));
-if (!sampleArgument) {
-  throw new Error("Usage: node scripts/validate-why-dag.js <sample-directory> [--write]");
+if (!documentSetArgument) {
+  throw new Error("Usage: node validate-why-dag.js <document-set-directory> [--write]");
 }
 
-const sampleDirectory = path.resolve(process.cwd(), sampleArgument);
-const dependencyPath = path.join(sampleDirectory, ".leanmd", "dependencies.json");
+const documentSetDirectory = path.resolve(process.cwd(), documentSetArgument);
+const dependencyPath = path.join(documentSetDirectory, ".leanmd", "dependencies.json");
 const shouldWrite = process.argv.includes("--write");
 
 function fail(message) {
@@ -48,7 +48,7 @@ function markdownFiles(directory) {
     if (!entry.isFile() || path.extname(entry.name).toLowerCase() !== ".md") {
       return [];
     }
-    return [normalizedRelativePath(path.relative(sampleDirectory, entryPath))];
+    return [normalizedRelativePath(path.relative(documentSetDirectory, entryPath))];
   });
 }
 
@@ -57,12 +57,12 @@ function whyShortcutFiles(directory) {
     const entryPath = path.join(directory, entry.name);
     if (entry.isDirectory()) return whyShortcutFiles(entryPath);
     if (!entry.isFile() || entry.name !== "shortcut.leanmd.json") return [];
-    return [normalizedRelativePath(path.relative(sampleDirectory, entryPath))];
+    return [normalizedRelativePath(path.relative(documentSetDirectory, entryPath))];
   });
 }
 
 function markdownLinks(sourceDocument) {
-  const sourcePath = path.join(sampleDirectory, sourceDocument);
+  const sourcePath = path.join(documentSetDirectory, sourceDocument);
   const source = readFileSync(sourcePath, "utf8");
   const links = [];
   const linkPattern =
@@ -73,7 +73,7 @@ function markdownLinks(sourceDocument) {
     const absoluteTarget = path.resolve(path.dirname(sourcePath), decodedTarget);
     links.push({
       source: sourceDocument,
-      target: normalizedRelativePath(path.relative(sampleDirectory, absoluteTarget)),
+      target: normalizedRelativePath(path.relative(documentSetDirectory, absoluteTarget)),
       role: (match[2] ?? match[3] ?? "").trim().toLowerCase(),
     });
   }
@@ -81,7 +81,7 @@ function markdownLinks(sourceDocument) {
   return links;
 }
 
-const documents = new Set(markdownFiles(sampleDirectory));
+const documents = new Set(markdownFiles(documentSetDirectory));
 const allLinks = [...documents].flatMap(markdownLinks);
 const whyLinks = allLinks.filter(({ role }) => role === "why");
 
@@ -191,7 +191,7 @@ whyEdges.sort(
 
 let updatedSidecarCount = 0;
 for (const document of documents) {
-  const sidecarPath = path.join(sampleDirectory, `${document}.leanmd.json`);
+  const sidecarPath = path.join(documentSetDirectory, `${document}.leanmd.json`);
   const whyTargets = [...new Set(outgoing.get(document))].sort((left, right) =>
     left.localeCompare(right),
   );
@@ -230,7 +230,7 @@ for (const edge of shortcutEdges) {
   }
   expectedShortcutPaths.add(shortcutDocument);
 
-  const shortcutPath = path.join(sampleDirectory, shortcutDocument);
+  const shortcutPath = path.join(documentSetDirectory, shortcutDocument);
   const generatedShortcut = `${JSON.stringify(
     { kind: "why-shortcut", source: edge.from, target: edge.to },
     null,
@@ -249,7 +249,7 @@ for (const edge of shortcutEdges) {
   }
 }
 
-const unexpectedShortcuts = whyShortcutFiles(sampleDirectory).filter(
+const unexpectedShortcuts = whyShortcutFiles(documentSetDirectory).filter(
   (shortcut) => !expectedShortcutPaths.has(shortcut),
 );
 if (unexpectedShortcuts.length > 0) {

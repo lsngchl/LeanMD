@@ -7,8 +7,8 @@ A small, local-first Markdown viewer that renders LaTeX written with either
 
 - Viewer source: `index.html` and `src/`
 - Windows desktop wrapper and installer scripts: `desktop/LeanMD/`
-- Why-DAG authoring rules and canonical sample: `samples/`
-- Why-DAG validation and supporting scripts: `scripts/`
+- Complete LeanMD example workspace: `leanmd-example/`
+- Application asset scripts: `scripts/`
 - Automated tests: `test/`
 
 The tracked package metadata, executable metadata, application manifest, and
@@ -44,7 +44,7 @@ window.
 [What this meant](./definition.md "recall")
 ```
 
-Every Markdown document in a why-DAG sample has an adjacent
+Every Markdown document in a structured LeanMD document set has an adjacent
 `<document>.md.leanmd.json` sidecar containing only its outgoing `"why"` links.
 The generated `.leanmd/dependencies.json` manifest combines those sidecars into
 the complete why DAG. `"recall"` links remain navigation metadata in Markdown
@@ -58,18 +58,18 @@ and selected passage are written to the ignored
 Markdown files outside a structured document set are still viewed and
 automatically reloaded without creating this context file.
 
-The sample directory itself is the root document's folder. Every non-root
+The document-set directory itself is the root document's folder. Every non-root
 document lives in a same-named child folder of its canonical why parent. If
 another parent uses that document, the second location contains a portable
 `shortcut.leanmd.json` pointing to the canonical Markdown file instead of a
 duplicate. OS-specific `.lnk` and symbolic links are not required.
 
-Validate a sample, or regenerate its document sidecars and complete manifest
+Validate the included document set, or regenerate its document sidecars and complete manifest
 after editing why links, with:
 
 ```sh
-node scripts/validate-why-dag.js samples/continuous_interval_dag
-node scripts/validate-why-dag.js samples/continuous_interval_dag --write
+node leanmd-example/validate-why-dag.js leanmd-example/continuous_interval_dag
+node leanmd-example/validate-why-dag.js leanmd-example/continuous_interval_dag --write
 ```
 
 ## Run locally

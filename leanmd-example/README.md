@@ -1,29 +1,16 @@
-# LeanMD 수학 증명 샘플 작성 원칙
+# LeanMD 수학 증명 문서 작성 원칙
 
-이 문서는 `samples/` 아래에서 수학 증명을 LeanMD용 Markdown 문서 집합으로
-구조화할 때 따르는 공통 원칙을 기록한다.
-
-링크의 역할은 대상 문서의 종류가 아니라 **독자가 링크를 누르는 이유**로
-정한다.
-
-| 링크 역할 | 독자의 질문 | 의미 | DAG 포함 여부 |
-|---|---|---|---|
-| `why` | “왜 이것이 성립하지?” | 현재 내용을 더 자세한 논증으로 풀어낸다. | 포함 |
-| `recall` | “이게 뭐였더라?” | 이미 나온 정의, 표기 또는 문맥을 다시 확인한다. | 제외 |
-
-핵심 구조는 다음 한 문장으로 요약된다.
-
-> `why` 링크는 증명의 구조를 이루는 DAG로 관리하고, `recall` 링크는 독자의
-> 탐색만 도우며 그 구조에는 참여시키지 않는다.
+이 문서는 수학 증명을 구조화된 LeanMD Markdown 문서 집합으로 작성할 때 따르는 공통 원칙을 기록한다.
 
 ## 1. 두 링크 역할
 
 Markdown 링크의 title에 `why` 또는 `recall`을 기록한다.
+링크의 역할은 대상 문서의 종류가 아니라 **독자가 링크를 누르는 이유**로 정한다.
 
-```md
-[왜 성립하는지 자세히 보기](./child/child.md "why")
-[앞에서 정한 정의 다시 보기](../parent.md "recall")
-```
+| 링크 역할 | 독자의 질문 | 의미 | DAG 포함 여부 |
+|---|---|---|---|
+| `why` | “왜 이것이 성립하지?” | 현재 내용을 더 자세한 논증으로 풀어낸다. | 포함 |
+| `recall` | “이게 뭐였더라?” | 이미 나온 정의, 표기 또는 가정을 다시 확인한다. | 제외 |
 
 ### `why`: 왜 이것이 성립하는가?
 
@@ -56,9 +43,12 @@ Markdown 링크의 title에 `why` 또는 `recall`을 기록한다.
 
 다음과 같은 경우 `recall`을 사용한다.
 
-- 상위 문서에서 정한 정의나 가정을 다시 보여 준다.
+- 대상 문서에서 실제로 정의하거나 명시한 정의와 가정을 다시 보여 준다.
 - 기호가 처음 도입된 곳을 찾아가게 한다.
-- 현재 글을 이해하는 데 도움이 되는 배경 문맥을 다시 확인하게 한다.
+- 현재 문장을 이해하는 데 필요한 설명이 대상 문서에 있을 때 그 설명을 다시 확인하게 한다.
+
+같은 기호나 구간이 앞 문서에 등장했다는 이유만으로 `recall`을 붙이지 않는다.
+대상 문서에 다시 읽을 정의, 가정 또는 설명이 실제로 있어야 한다.
 
 `recall` 링크는 하위 문서에서 상위 문서로 향해도 되고 서로 순환해도 된다.
 이는 탐색 관계일 뿐이므로 다음 항목에 영향을 주지 않는다.
@@ -81,10 +71,36 @@ Markdown 링크의 title에 `why` 또는 `recall`을 기록한다.
 기능을 동시에 수행하는 것처럼 보이면 문장을 나누어 주된 질문이 드러나게
 작성한다.
 
-## 2. Markdown 문서의 역할
+## 2. Markdown 본문 작성
 
 Markdown 본문에는 사람이 읽을 수 있는 자연스러운 수학 글을 작성한다.
 의존성 목록이나 기계용 머리말을 본문에 삽입하지 않는다.
+
+### 문장과 줄
+
+증명 본문의 산문은 **한 문장을 Markdown 소스의 한 줄에 쓴다**.
+편집기 폭에 맞추기 위한 임의 줄바꿈으로 한 문장을 여러 소스 줄에 나누지 않는다.
+문단은 빈 줄로 구분하고, 표시 수식은 별도 줄에 둔다.
+이 규칙을 따르면 LeanMD에서 선택한 문구와 원본 문장을 쉽게 대응시킬 수 있다.
+
+### 링크를 문장에 넣는 방식
+
+`why` 링크는 별도의 보조정리 목록이나 인용 블록을 만들지 않고, 설명이 필요한 주장 바로 뒤에 괄호로 붙인다.
+링크 문구에는 대상 문서의 실제 제목 전체를 사용하고, 마침표는 닫는 괄호 뒤에 쓴다.
+
+```md
+수렴하는 실수열은 유계이다 ([수렴하는 실수열의 유계성](convergent_sequence_is_bounded/convergent_sequence_is_bounded.md "why")).
+```
+
+`See`나 `Lemma` 같은 표지를 링크 앞에 덧붙이지 않는다.
+수학 본문과 링크 문구에서 `루트 문서`, `상위 문서`, `앞 문서`처럼 파일 구조를 설명하는 메타 표현을 사용하지 않는다.
+`recall` 링크도 파일 위치가 아니라 다시 확인할 정의나 내용의 이름을 링크 문구로 사용한다.
+
+```md
+[균등연속성의 정의](../continuous_interval_consequences.md "recall")를 부정해 보자.
+```
+
+### 문서의 역할
 
 각 문서는 다음 중 하나처럼 하나의 명확한 설명 책임을 맡는다.
 
@@ -102,11 +118,11 @@ Markdown 본문에는 사람이 읽을 수 있는 자연스러운 수학 글을 
 각 문서에 `why` 부모가 여러 개라면 그중 하나만 canonical 부모로 선택한다.
 실제 폴더는 이 canonical 부모 관계를 나타내는 트리다.
 
-각 샘플의 최상위 폴더는 루트 Markdown 문서의 폴더 역할을 한다. 비루트
+각 문서 집합의 최상위 폴더는 루트 Markdown 문서의 폴더 역할을 한다. 비루트
 문서는 자신과 같은 이름의 폴더 안에 둔다.
 
 ```text
-sample_name/
+document_set/
 ├─ root_theorem.md
 ├─ root_theorem.md.leanmd.json
 └─ child_argument/
@@ -171,7 +187,7 @@ child_argument.md
 child_argument.md.leanmd.json
 ```
 
-sidecar에는 해당 문서에서 나가는 `why` 링크의 canonical 대상만 샘플 루트
+sidecar에는 해당 문서에서 나가는 `why` 링크의 canonical 대상만 문서 집합 루트
 기준 경로로 기록한다.
 
 ```json
@@ -196,7 +212,7 @@ sidecar에는 해당 문서에서 나가는 `why` 링크의 canonical 대상만 
 
 ## 6. 전체 `why` DAG
 
-각 샘플의 전체 `why` DAG는 다음 파일에 기록한다.
+각 문서 집합의 전체 `why` DAG는 다음 파일에 기록한다.
 
 ```text
 .leanmd/dependencies.json
@@ -221,7 +237,7 @@ sidecar에는 해당 문서에서 나가는 `why` 링크의 canonical 대상만 
 
 ## 7. 작성 순서
 
-새로운 증명 샘플은 다음 순서로 작성한다.
+새로운 증명 문서 집합은 다음 순서로 작성한다.
 
 1. 루트 명제와 전체 논리의 개요를 루트 Markdown에 작성한다.
 2. “왜 성립하는가?”를 별도로 설명할 부분을 `why` 링크로 분리한다.
@@ -234,17 +250,17 @@ sidecar에는 해당 문서에서 나가는 `why` 링크의 canonical 대상만 
 
 ## 8. 검증
 
-샘플을 검사하려면 저장소 루트에서 다음 명령을 실행한다.
+문서 집합을 검사하려면 이 README와 같은 폴더에 있는 검증기에 대상 문서 집합의 경로를 지정한다.
 
 ```sh
-node scripts/validate-why-dag.js samples/continuous_interval_dag
+node validate-why-dag.js path/to/document_set
 ```
 
 Markdown의 `why` 링크를 기준으로 문서별 sidecar, 바로가기 및 전체 manifest를
 갱신하려면 `--write`를 사용한다.
 
 ```sh
-node scripts/validate-why-dag.js samples/continuous_interval_dag --write
+node validate-why-dag.js path/to/document_set --write
 ```
 
 검증기는 다음 사항을 확인한다.
@@ -257,12 +273,3 @@ node scripts/validate-why-dag.js samples/continuous_interval_dag --write
 - `why` 그래프가 하나의 루트를 가진 DAG인가
 - 모든 증명 문서가 루트에서 도달 가능한가
 - `recall` 링크가 DAG 메타데이터에 섞이지 않았는가
-
-## 9. 현재 예시
-
-- `continuous_interval_dag/`: 두 주요 논증, 두 공유 보조정리, 하나의 전용
-  보조정리를 포함하는 예시
-
-이 예시의 실제 폴더는 canonical `why` 부모 관계에 따른 트리다. 전체 `why`
-관계는 sidecar, 바로가기와 `.leanmd/dependencies.json`을 통해 DAG로 기록되고,
-`recall` 관계는 Markdown 안의 탐색 정보로만 남는다.
