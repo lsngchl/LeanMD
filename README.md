@@ -12,7 +12,7 @@ A small, local-first Markdown viewer that renders LaTeX written with either
 - Automated tests: `test/`
 
 The tracked package metadata, executable metadata, application manifest, and
-installer display version are kept in sync at `1.4.0`.
+installer display version are kept in sync at `1.4.1`.
 
 ## Features
 
@@ -26,6 +26,7 @@ installer display version are kept in sync at `1.4.0`.
 - In-app navigation for relative Markdown links and a structure-aware exploration map
 - Undiscovered links inside the current LeanMD structure reuse the current viewer window
 - Recursive map layout that keeps sibling subtrees ordered as branches grow
+- Map branches ordered by their source links rather than discovery order
 - Drag-to-pan map navigation with slider, button, fit, and wheel zoom controls
 - Inferred `?` nodes on the shortest structural route to newly opened documents
 - Persistent exploration maps for structured LeanMD document sets
@@ -33,6 +34,7 @@ installer display version are kept in sync at `1.4.0`.
 - External-link icons for web references that open in the system browser
 - Source-anchored reading-position restoration when navigating back
 - Code spans and fenced code blocks are excluded from math rendering
+- Markdown footnotes with linked references and backreferences
 - Raw HTML in Markdown is disabled
 
 Use a standard Markdown link title to express the question that following the
@@ -121,11 +123,11 @@ The Windows desktop wrapper accepts a Markdown path as its first command-line
 argument and loads cacheable viewer assets in WebView2.
 
 ```powershell
-dotnet publish desktop/LeanMD/LeanMD.csproj -c Release -r win-x64 --self-contained false -o release/LeanMD-1.4.0
+dotnet publish desktop/LeanMD/LeanMD.csproj -c Release -r win-x64 --self-contained false -o release/LeanMD-1.4.1
 ```
 
 Official release folders use the `release/LeanMD-<version>/` naming convention.
-Replace `1.4.0` in the command above with the version being released. After
+Replace `1.4.1` in the command above with the version being released. After
 publishing, run `Install-LeanMD.cmd` from that release folder to install the app
 for the current user.
 The installer registers LeanMD as an available handler for `.md` and `.markdown`,

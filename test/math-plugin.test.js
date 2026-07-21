@@ -2,14 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import katex from "katex";
 import MarkdownIt from "markdown-it";
+import footnotePlugin from "markdown-it-footnote";
 import { mathPlugin } from "../src/math-plugin.js";
 import { sourceMapPlugin } from "../src/source-map-plugin.js";
 
 function createRenderer() {
-  return new MarkdownIt({ html: false }).use(mathPlugin, {
-    engine: katex,
-    katexOptions: { strict: false },
-  });
+  return new MarkdownIt({ html: false })
+    .use(mathPlugin, {
+      engine: katex,
+      katexOptions: { strict: false },
+    })
+    .use(footnotePlugin);
 }
 
 test("renders bracket-delimited inline mathematics", () => {
@@ -88,6 +91,31 @@ test("keeps ordinary Markdown behavior", () => {
   assert.match(html, /<strong>bold<\/strong>/);
   assert.match(html, /<a href="https:\/\/example.com">link<\/a>/);
   assert.match(html, /<table>/);
+});
+
+test("renders named footnotes with working references and backreferences", () => {
+  const source = [
+    "A statement with a note.[^proof]",
+    "",
+    "[^proof]: The supporting detail.",
+  ].join("\n");
+  const html = createRenderer().render(source);
+
+  assert.match(html, /<sup class="footnote-ref"><a href="#fn1" id="fnref1">\[1\]<\/a><\/sup>/);
+  assert.match(html, /<section class="footnotes">/);
+  assert.match(html, /<li id="fn1" class="footnote-item">/);
+  assert.match(html, /href="#fnref1" class="footnote-backref"/);
+  assert.doesNotMatch(html, /\[\^proof\]/);
+});
+
+test("renders mathematics inside footnotes", () => {
+  const html = createRenderer().render(
+    "Value.[^math]\n\n[^math]: Because $x^2 \\ge 0$.",
+  );
+
+  assert.match(html, /class="footnote-item"/);
+  assert.match(html, /class="math-inline"/);
+  assert.match(html, /class="katex"/);
 });
 
 test("preserves an unmatched inline opening delimiter", () => {

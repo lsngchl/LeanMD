@@ -78,6 +78,31 @@ try
             intermediate,
             deepTarget),
         "A deep target should reveal the shortest route from its nearest revealed ancestor.");
+    Assert(structure.GetEdgeOrder(rootDocument, branchA) == 0 &&
+        structure.GetEdgeOrder(rootDocument, branchB) == 1,
+        "Structure edges should retain their source-link order.");
+
+    WriteDependencies(
+        metadata,
+        "root.md",
+        ("root.md", "b/b.md"),
+        ("root.md", "a/a.md"),
+        ("a/a.md", "a/x/x.md"),
+        ("a/x/x.md", "a/x/target.md"));
+    LeanMdStructure? reorderedStructure = LeanMdStructure.Load(metadata);
+    Assert(reorderedStructure is not null &&
+        reorderedStructure.GetEdgeOrder(rootDocument, branchB) == 0 &&
+        reorderedStructure.GetEdgeOrder(rootDocument, branchA) == 1 &&
+        reorderedStructure.GetDocumentOrder(branchB) <
+            reorderedStructure.GetDocumentOrder(branchA),
+        "Reordering source links should deterministically reorder map branches.");
+    WriteDependencies(
+        metadata,
+        "root.md",
+        ("root.md", "a/a.md"),
+        ("root.md", "b/b.md"),
+        ("a/a.md", "a/x/x.md"),
+        ("a/x/x.md", "a/x/target.md"));
 
     var mapState = new ExplorationMapState(
         rootDocument,
@@ -179,17 +204,25 @@ static void WriteDependencies(
     params (string From, string To)[] edges)
 {
     Directory.CreateDirectory(metadataDirectory);
+    var nextOrderBySource = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+    object[] orderedEdges = edges.Select(edge =>
+    {
+        int order = nextOrderBySource.GetValueOrDefault(edge.From);
+        nextOrderBySource[edge.From] = order + 1;
+        return (object)new
+        {
+            from = edge.From,
+            to = edge.To,
+            kind = "why",
+            order,
+        };
+    }).ToArray();
     File.WriteAllText(
         Path.Combine(metadataDirectory, "dependencies.json"),
         JsonSerializer.Serialize(new
         {
             root,
-            edges = edges.Select(edge => new
-            {
-                from = edge.From,
-                to = edge.To,
-                kind = "why",
-            }),
+            edges = orderedEdges,
         }, new JsonSerializerOptions { WriteIndented = true }));
 }
 

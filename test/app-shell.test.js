@@ -4,6 +4,10 @@ import test from "node:test";
 
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../src/app.js", import.meta.url), "utf8");
+const rendererSource = readFileSync(
+  new URL("../src/renderer.js", import.meta.url),
+  "utf8",
+);
 const stylesSource = readFileSync(
   new URL("../src/styles.css", import.meta.url),
   "utf8",
@@ -79,10 +83,10 @@ test("distinguishes internal Markdown links from external web links", () => {
   assert.match(appSource, /link\.getAttribute\("title"\)/);
   assert.match(appSource, /type: "open-markdown-link",[\s\S]*href,[\s\S]*role,/);
   assert.match(desktopHost, /case "open-markdown-link":/);
-  assert.match(desktopHost, /OpenLinkedMarkdownAsync\([\s\S]*hrefElement\.GetString\(\),[\s\S]*role,[\s\S]*position\)/);
+  assert.match(desktopHost, /OpenLinkedMarkdownAsync\([\s\S]*hrefElement\.GetString\(\),[\s\S]*role,[\s\S]*position,[\s\S]*linkOrder\)/);
   assert.match(
     desktopHost,
-    /Path\.GetFullPath\(Path\.Combine\(currentDirectory, relativePath\)\)/,
+    /ResolveLinkedMarkdownPath\(sourcePath, href\)/,
   );
   assert.match(appSource, /function isExternalWebHref\(href\)/);
   assert.match(appSource, /const href = link\.getAttribute\("href"\)/);
@@ -191,8 +195,16 @@ test("watches and reconciles dependency manifest changes", () => {
   assert.match(desktopHost, /new FileSystemWatcher\(metadataDirectory, "dependencies\.json"\)/);
   assert.match(desktopHost, /LeanMdStructureReloadDebounceMilliseconds = 250/);
   assert.match(desktopHost, /ReconcileStructuredMap\(structure\)/);
-  assert.match(desktopHost, /structure\.ContainsEdge\(new ExplorationMapEdge/);
+  assert.match(desktopHost, /structure\.ContainsEdge\(edge\)/);
   assert.match(desktopHost, /_mapDependenciesFingerprint = structure\.Fingerprint/);
+});
+
+test("orders map branches by source links instead of discovery", () => {
+  assert.match(appSource, /type: "document-links"/);
+  assert.match(appSource, /leanmdLinkOrder/);
+  assert.match(desktopHost, /UpdateUnstructuredLinkOrders/);
+  assert.match(leanMdStructure, /GetEdgeOrder/);
+  assert.match(desktopHost, /_leanMdStructure\.GetEdgeOrder\(edge\.From, edge\.To\)/);
 });
 
 test("does not draw a new edge when revisiting a discovered node", () => {
@@ -200,8 +212,16 @@ test("does not draw a new edge when revisiting a discovered node", () => {
   assert.match(desktopHost, /if \(!targetWasAlreadyDiscovered\)\s*{\s*_mapNodes\.Add\(targetPath\)/s);
   assert.match(
     desktopHost,
-    /if \(!targetWasAlreadyDiscovered\)[\s\S]*?_mapEdges\.Add\(\(sourcePath, targetPath\)\);/,
+    /if \(!targetWasAlreadyDiscovered\)[\s\S]*?_mapEdges\.Add\(new ExplorationMapEdge\(/,
   );
+});
+
+test("renders and styles Markdown footnotes", () => {
+  assert.match(rendererSource, /from "markdown-it-footnote"/);
+  assert.match(rendererSource, /\.use\(footnotePlugin\)/);
+  assert.match(stylesSource, /\.markdown-body \.footnotes\s*{/);
+  assert.match(stylesSource, /\.markdown-body \.footnote-ref/);
+  assert.match(stylesSource, /\.markdown-body \.footnote-backref/);
 });
 
 test("marks the immediately previous document on the map", () => {

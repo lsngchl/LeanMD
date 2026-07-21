@@ -1,6 +1,6 @@
 {
   "name": "lean-md-viewer",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "katex": "^0.16.22",
-    "markdown-it": "^14.1.0"
+    "markdown-it": "^14.1.0",
+    "markdown-it-footnote": "^4.0.0"
   },
   "devDependencies": {
     "vite": "^7.1.7"

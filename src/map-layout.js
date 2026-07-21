@@ -17,6 +17,10 @@ function nodeOrder(node, fallback) {
   return Number.isFinite(node.order) ? node.order : fallback;
 }
 
+function edgeOrder(edge, fallback) {
+  return Number.isFinite(edge?.order) ? edge.order : fallback;
+}
+
 export function layoutExplorationMap(nodes, edges, root, options = {}) {
   const settings = normalizedOptions(options);
   const orderedNodes = [];
@@ -41,16 +45,25 @@ export function layoutExplorationMap(nodes, edges, root, options = {}) {
   }
 
   const outgoing = new Map(orderedNodes.map((node) => [node.id, []]));
-  for (const edge of edges) {
+  for (const [index, edge] of edges.entries()) {
     if (!nodeById.has(edge?.from) || !nodeById.has(edge?.to)) continue;
-    outgoing.get(edge.from).push(edge.to);
+    outgoing.get(edge.from).push({
+      id: edge.to,
+      order: edgeOrder(edge, index),
+    });
   }
 
   for (const targets of outgoing.values()) {
-    targets.sort((a, b) => nodeById.get(a).order - nodeById.get(b).order);
+    targets.sort(
+      (a, b) =>
+        a.order - b.order ||
+        nodeById.get(a.id).order - nodeById.get(b.id).order ||
+        a.id.localeCompare(b.id),
+    );
   }
 
   const primaryParents = new Map();
+  const primaryChildOrders = new Map();
   const depths = new Map();
   const preferredRoot = nodeById.has(root) ? root : orderedNodes[0].id;
 
@@ -62,10 +75,12 @@ export function layoutExplorationMap(nodes, edges, root, options = {}) {
       const sourceId = queue[index];
       const childDepth = depths.get(sourceId) + 1;
 
-      for (const targetId of outgoing.get(sourceId)) {
+      for (const target of outgoing.get(sourceId)) {
+        const targetId = target.id;
         if (depths.has(targetId)) continue;
         depths.set(targetId, childDepth);
         primaryParents.set(targetId, sourceId);
+        primaryChildOrders.set(targetId, target.order);
         queue.push(targetId);
       }
     }
@@ -81,7 +96,12 @@ export function layoutExplorationMap(nodes, edges, root, options = {}) {
     children.get(parentId).push(childId);
   }
   for (const childIds of children.values()) {
-    childIds.sort((a, b) => nodeById.get(a).order - nodeById.get(b).order);
+    childIds.sort(
+      (a, b) =>
+        primaryChildOrders.get(a) - primaryChildOrders.get(b) ||
+        nodeById.get(a).order - nodeById.get(b).order ||
+        a.localeCompare(b),
+    );
   }
 
   const componentRoots = orderedNodes

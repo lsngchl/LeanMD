@@ -111,7 +111,15 @@ function renderDocument(
   elements.preview.innerHTML = renderMarkdown(source);
   elements.documentName.textContent = name;
 
-  for (const link of elements.preview.querySelectorAll("a[href]")) {
+  const links = [...elements.preview.querySelectorAll("a[href]")];
+  const markdownLinks = links.filter((link) =>
+    isRelativeMarkdownLink(link.getAttribute("href")),
+  );
+  for (const [order, link] of markdownLinks.entries()) {
+    link.dataset.leanmdLinkOrder = String(order);
+  }
+
+  for (const link of links) {
     const href = link.getAttribute("href");
     if (isExternalWebHref(href)) {
       link.target = "_blank";
@@ -119,6 +127,17 @@ function renderDocument(
       link.classList.add("external-link");
       appendExternalLinkIndicator(link);
     }
+  }
+
+  if (webViewHost && Number.isInteger(currentDocumentContextId)) {
+    webViewHost.postMessage({
+      type: "document-links",
+      contextId: currentDocumentContextId,
+      links: markdownLinks.map((link, order) => ({
+        href: link.getAttribute("href"),
+        order,
+      })),
+    });
   }
 
   document.title = `${name} — LeanMD`;
@@ -835,10 +854,12 @@ elements.preview.addEventListener("click", (event) => {
 
   event.preventDefault();
   const role = link.getAttribute("title")?.trim().toLowerCase() ?? "";
+  const order = Number(link.dataset.leanmdLinkOrder);
   webViewHost.postMessage({
     type: "open-markdown-link",
     href,
     role,
+    order: Number.isInteger(order) && order >= 0 ? order : null,
     position: currentDocumentPosition(),
   });
 });

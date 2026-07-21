@@ -17,9 +17,35 @@ function node(id, order) {
   return { id, order };
 }
 
-function edge(from, to) {
-  return { from, to };
+function edge(from, to, order) {
+  return Number.isFinite(order) ? { from, to, order } : { from, to };
 }
+
+test("uses source-link order instead of discovery order for siblings", () => {
+  const nodes = [node("root", 0), node("lower", 1), node("upper", 2)];
+  const edges = [edge("root", "lower", 1), edge("root", "upper", 0)];
+  const layout = layoutExplorationMap(nodes, edges, "root", options);
+
+  assert.ok(layout.positions.get("upper").y < layout.positions.get("lower").y);
+});
+
+test("keeps source order when a link is inserted between revealed siblings", () => {
+  const nodes = [
+    node("root", 0),
+    node("lower", 1),
+    node("upper", 2),
+    node("middle", 3),
+  ];
+  const edges = [
+    edge("root", "lower", 2),
+    edge("root", "upper", 0),
+    edge("root", "middle", 1),
+  ];
+  const layout = layoutExplorationMap(nodes, edges, "root", options);
+
+  assert.ok(layout.positions.get("upper").y < layout.positions.get("middle").y);
+  assert.ok(layout.positions.get("middle").y < layout.positions.get("lower").y);
+});
 
 test("keeps sibling subtrees in order when a middle branch grows", () => {
   const originalNodes = [

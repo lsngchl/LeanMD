@@ -28,7 +28,7 @@ internal sealed class MainForm : Form
     private readonly System.Windows.Forms.Timer _unresolvedStateReloadTimer;
     private readonly string _contextWindowId = Guid.NewGuid().ToString("N");
     private readonly List<string> _mapNodes = [];
-    private readonly List<(string From, string To)> _mapEdges = [];
+    private readonly List<ExplorationMapEdge> _mapEdges = [];
     private readonly List<string> _mapVisitedNodes = [];
     private readonly Stack<DocumentHistoryEntry> _documentHistory = new();
     private string? _mapRootPath;
@@ -262,11 +262,22 @@ internal sealed class MainForm : Form
                             out DocumentPosition parsedPosition)
                                 ? parsedPosition
                                 : null;
+                        int? linkOrder =
+                            message.RootElement.TryGetProperty("order", out JsonElement orderElement) &&
+                            orderElement.ValueKind == JsonValueKind.Number &&
+                            orderElement.TryGetInt32(out int parsedOrder) &&
+                            parsedOrder >= 0
+                                ? parsedOrder
+                                : null;
                         await OpenLinkedMarkdownAsync(
                             hrefElement.GetString(),
                             role,
-                            position);
+                            position,
+                            linkOrder);
                     }
+                    break;
+                case "document-links":
+                    UpdateUnstructuredLinkOrders(message.RootElement);
                     break;
                 case "open-dropped-file":
                     await OpenDroppedMarkdownAsync(eventArgs.AdditionalObjects);
@@ -357,6 +368,7 @@ internal sealed class MainForm : Form
         bool showEmptyStateOnFailure = false,
         OpenReason reason = OpenReason.Direct,
         string? linkSourcePath = null,
+        int? linkOrder = null,
         DocumentPosition? historyPosition = null,
         DocumentPosition? restorePosition = null)
     {
@@ -411,7 +423,7 @@ internal sealed class MainForm : Form
                 unresolved = UnresolvedStateStore.IsUnresolved(markdownPath),
                 restorePosition = serializedRestorePosition,
             });
-            UpdateMapAfterOpen(markdownPath, reason, previousPath, linkSourcePath);
+            UpdateMapAfterOpen(markdownPath, reason, previousPath, linkSourcePath, linkOrder);
         }
         catch (Exception exception)
         {
@@ -431,33 +443,17 @@ internal sealed class MainForm : Form
     private async Task OpenLinkedMarkdownAsync(
         string? href,
         string? role,
-        DocumentPosition? historyPosition)
+        DocumentPosition? historyPosition,
+        int? linkOrder)
     {
         if (_markdownPath is null || string.IsNullOrWhiteSpace(href)) return;
 
         string sourcePath = _markdownPath;
 
-        int suffixStart = href.IndexOfAny(['?', '#']);
-        string encodedPath = suffixStart >= 0 ? href[..suffixStart] : href;
-        if (string.IsNullOrWhiteSpace(encodedPath)) return;
-
         try
         {
-            string relativePath = Uri.UnescapeDataString(encodedPath)
-                .Replace('/', Path.DirectorySeparatorChar);
-            if (Path.IsPathRooted(relativePath)) return;
-
-            string extension = Path.GetExtension(relativePath);
-            if (!extension.Equals(".md", StringComparison.OrdinalIgnoreCase) &&
-                !extension.Equals(".markdown", StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            string? currentDirectory = Path.GetDirectoryName(_markdownPath);
-            if (currentDirectory is null) return;
-
-            string linkedPath = Path.GetFullPath(Path.Combine(currentDirectory, relativePath));
+            string? linkedPath = ResolveLinkedMarkdownPath(sourcePath, href);
+            if (linkedPath is null) return;
             bool isRecall = role?.Equals(
                 "recall",
                 StringComparison.OrdinalIgnoreCase) == true;
@@ -487,6 +483,7 @@ internal sealed class MainForm : Form
                 linkedPath,
                 reason: OpenReason.Link,
                 linkSourcePath: sourcePath,
+                linkOrder: linkOrder,
                 historyPosition: historyPosition);
         }
         catch (Exception exception) when (
@@ -549,7 +546,8 @@ internal sealed class MainForm : Form
         string markdownPath,
         OpenReason reason,
         string? previousPath,
-        string? linkSourcePath)
+        string? linkSourcePath,
+        int? linkOrder)
     {
         if (_leanMdStructure?.ContainsDocument(markdownPath) == true)
         {
@@ -563,7 +561,7 @@ internal sealed class MainForm : Form
                 StartUnstructuredMap(markdownPath);
                 return;
             case OpenReason.Link when linkSourcePath is not null:
-                DiscoverUnstructuredMapLink(linkSourcePath, markdownPath);
+                DiscoverUnstructuredMapLink(linkSourcePath, markdownPath, linkOrder);
                 return;
             case OpenReason.Map:
             case OpenReason.History:
@@ -615,7 +613,7 @@ internal sealed class MainForm : Form
         if (restored is not null && PathsEqual(restored.RootPath, structure.RootPath))
         {
             _mapNodes.AddRange(restored.Nodes);
-            _mapEdges.AddRange(restored.Edges.Select(edge => (edge.From, edge.To)));
+            _mapEdges.AddRange(restored.Edges);
             _mapVisitedNodes.AddRange(restored.VisitedNodes);
             _mapDependenciesFingerprint = restored.DependenciesFingerprint;
         }
@@ -655,11 +653,11 @@ internal sealed class MainForm : Form
         {
             structure.RootPath,
         };
-        List<(string From, string To)> candidateEdges = _mapEdges
+        List<ExplorationMapEdge> candidateEdges = _mapEdges
             .Where(edge =>
                 candidateNodes.Contains(edge.From) &&
                 candidateNodes.Contains(edge.To) &&
-                structure.ContainsEdge(new ExplorationMapEdge(edge.From, edge.To)))
+                structure.ContainsEdge(edge))
             .Distinct()
             .ToList();
 
@@ -671,9 +669,9 @@ internal sealed class MainForm : Form
         do
         {
             added = false;
-            foreach ((string from, string to) in candidateEdges)
+            foreach (ExplorationMapEdge edge in candidateEdges)
             {
-                if (reachable.Contains(from) && reachable.Add(to)) added = true;
+                if (reachable.Contains(edge.From) && reachable.Add(edge.To)) added = true;
             }
         }
         while (added);
@@ -687,9 +685,9 @@ internal sealed class MainForm : Form
         do
         {
             added = false;
-            foreach ((string from, string to) in candidateEdges)
+            foreach (ExplorationMapEdge edge in candidateEdges)
             {
-                if (required.Contains(to) && required.Add(from)) added = true;
+                if (required.Contains(edge.To) && required.Add(edge.From)) added = true;
             }
         }
         while (added);
@@ -731,7 +729,10 @@ internal sealed class MainForm : Form
         }
         for (int index = 1; index < connector.Count; index++)
         {
-            var edge = (From: connector[index - 1], To: connector[index]);
+            var edge = new ExplorationMapEdge(
+                connector[index - 1],
+                connector[index],
+                structure.GetEdgeOrder(connector[index - 1], connector[index]));
             if (!_mapEdges.Any(existing =>
                 PathsEqual(existing.From, edge.From) && PathsEqual(existing.To, edge.To)))
             {
@@ -789,7 +790,10 @@ internal sealed class MainForm : Form
         PublishMapState();
     }
 
-    private void DiscoverUnstructuredMapLink(string sourcePath, string targetPath)
+    private void DiscoverUnstructuredMapLink(
+        string sourcePath,
+        string targetPath,
+        int? linkOrder)
     {
         if (_mapRootPath is null || _mapNodes.Count == 0)
         {
@@ -821,12 +825,102 @@ internal sealed class MainForm : Form
             _mapNodes.Add(targetPath);
             if (!sourcePath.Equals(targetPath, StringComparison.OrdinalIgnoreCase))
             {
-                _mapEdges.Add((sourcePath, targetPath));
+                _mapEdges.Add(new ExplorationMapEdge(
+                    sourcePath,
+                    targetPath,
+                    linkOrder ?? int.MaxValue));
             }
         }
 
         MarkMapNodeVisited(targetPath);
         PublishMapState();
+    }
+
+    private void UpdateUnstructuredLinkOrders(JsonElement message)
+    {
+        if (_mapMetadataDirectory is not null ||
+            _markdownPath is null ||
+            !message.TryGetProperty("contextId", out JsonElement contextIdElement) ||
+            !contextIdElement.TryGetInt32(out int contextId) ||
+            contextId != _documentContextId ||
+            !message.TryGetProperty("links", out JsonElement linksElement) ||
+            linksElement.ValueKind != JsonValueKind.Array ||
+            linksElement.GetArrayLength() > 10_000)
+        {
+            return;
+        }
+
+        string sourcePath = _markdownPath;
+        var orderByTarget = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (JsonElement linkElement in linksElement.EnumerateArray())
+        {
+            if (linkElement.ValueKind != JsonValueKind.Object ||
+                !linkElement.TryGetProperty("href", out JsonElement hrefElement) ||
+                hrefElement.ValueKind != JsonValueKind.String ||
+                !linkElement.TryGetProperty("order", out JsonElement orderElement) ||
+                orderElement.ValueKind != JsonValueKind.Number ||
+                !orderElement.TryGetInt32(out int order) ||
+                order < 0)
+            {
+                continue;
+            }
+
+            string? targetPath = ResolveLinkedMarkdownPath(sourcePath, hrefElement.GetString());
+            if (targetPath is not null)
+            {
+                orderByTarget.TryAdd(targetPath, order);
+            }
+        }
+
+        bool changed = false;
+        for (int index = 0; index < _mapEdges.Count; index++)
+        {
+            ExplorationMapEdge edge = _mapEdges[index];
+            if (!PathsEqual(edge.From, sourcePath) ||
+                !orderByTarget.TryGetValue(edge.To, out int order) ||
+                edge.Order == order)
+            {
+                continue;
+            }
+
+            _mapEdges[index] = edge with { Order = order };
+            changed = true;
+        }
+
+        if (changed) PublishMapState();
+    }
+
+    private static string? ResolveLinkedMarkdownPath(string sourcePath, string? href)
+    {
+        if (string.IsNullOrWhiteSpace(href)) return null;
+
+        try
+        {
+            int suffixStart = href.IndexOfAny(['?', '#']);
+            string encodedPath = suffixStart >= 0 ? href[..suffixStart] : href;
+            if (string.IsNullOrWhiteSpace(encodedPath)) return null;
+
+            string relativePath = Uri.UnescapeDataString(encodedPath)
+                .Replace('/', Path.DirectorySeparatorChar);
+            if (Path.IsPathRooted(relativePath)) return null;
+
+            string extension = Path.GetExtension(relativePath);
+            if (!extension.Equals(".md", StringComparison.OrdinalIgnoreCase) &&
+                !extension.Equals(".markdown", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            string? sourceDirectory = Path.GetDirectoryName(sourcePath);
+            return sourceDirectory is null
+                ? null
+                : Path.GetFullPath(Path.Combine(sourceDirectory, relativePath));
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or NotSupportedException or PathTooLongException or UriFormatException)
+        {
+            return null;
+        }
     }
 
     private void PersistMapState()
@@ -844,8 +938,7 @@ internal sealed class MainForm : Form
             new ExplorationMapState(
                 _mapRootPath,
                 _mapNodes.ToArray(),
-                _mapEdges.Select(edge =>
-                    new ExplorationMapEdge(edge.From, edge.To)).ToArray(),
+                _mapEdges.ToArray(),
                 _mapVisitedNodes.ToArray(),
                 _mapDependenciesFingerprint));
     }
@@ -878,7 +971,7 @@ internal sealed class MainForm : Form
             root = _mapRootPath,
             current = _markdownPath,
             previous = _previousMapPath,
-            nodes = _mapNodes.Select((path, order) => new
+            nodes = _mapNodes.Select((path, discoveryOrder) => new
             {
                 id = path,
                 label = isStructuredMap && !visited.Contains(path)
@@ -893,12 +986,17 @@ internal sealed class MainForm : Form
                         : Path.GetRelativePath(rootDirectory, path).Replace('\\', '/'),
                 inferred = isStructuredMap && !visited.Contains(path),
                 unresolved = UnresolvedStateStore.IsUnresolved(path),
-                order,
+                order = isStructuredMap && _leanMdStructure is not null
+                    ? _leanMdStructure.GetDocumentOrder(path)
+                    : discoveryOrder,
             }),
             edges = _mapEdges.Select(edge => new
             {
                 from = edge.From,
                 to = edge.To,
+                order = isStructuredMap && _leanMdStructure is not null
+                    ? _leanMdStructure.GetEdgeOrder(edge.From, edge.To)
+                    : edge.Order,
             }),
         });
     }

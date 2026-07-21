@@ -83,7 +83,14 @@ function markdownLinks(sourceDocument) {
 
 const documents = new Set(markdownFiles(documentSetDirectory));
 const allLinks = [...documents].flatMap(markdownLinks);
-const whyLinks = allLinks.filter(({ role }) => role === "why");
+const whyOrderByDocument = new Map();
+const whyLinks = allLinks
+  .filter(({ role }) => role === "why")
+  .map((link) => {
+    const order = whyOrderByDocument.get(link.source) ?? 0;
+    whyOrderByDocument.set(link.source, order + 1);
+    return { ...link, order };
+  });
 
 for (const link of whyLinks) {
   if (!documents.has(link.target)) {
@@ -101,7 +108,12 @@ for (const link of whyLinks) {
   const key = `${link.source}\u0000${link.target}`;
   if (whyEdgeKeys.has(key)) continue;
   whyEdgeKeys.add(key);
-  whyEdges.push({ from: link.source, to: link.target, kind: "why" });
+  whyEdges.push({
+    from: link.source,
+    to: link.target,
+    kind: "why",
+    order: link.order,
+  });
 }
 
 const outgoing = new Map([...documents].map((document) => [document, []]));
@@ -186,15 +198,14 @@ whyEdges.sort(
   (left, right) =>
     depth.get(left.from) - depth.get(right.from) ||
     left.from.localeCompare(right.from) ||
+    left.order - right.order ||
     left.to.localeCompare(right.to),
 );
 
 let updatedSidecarCount = 0;
 for (const document of documents) {
   const sidecarPath = path.join(documentSetDirectory, `${document}.leanmd.json`);
-  const whyTargets = [...new Set(outgoing.get(document))].sort((left, right) =>
-    left.localeCompare(right),
-  );
+  const whyTargets = [...new Set(outgoing.get(document))];
   const generatedSidecar = `${JSON.stringify(
     { document, whyLinks: whyTargets },
     null,

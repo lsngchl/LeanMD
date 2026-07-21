@@ -57,6 +57,9 @@ test("renders every document in the configured LeanMD document set", () => {
 
 test("stores per-document and aggregate why-only DAG metadata", () => {
   const files = markdownFiles(documentSetRoot);
+  const manifest = JSON.parse(
+    readFileSync(path.join(documentSetRoot, ".leanmd", "dependencies.json"), "utf8"),
+  );
 
   for (const file of files) {
     const sidecarPath = `${file}.leanmd.json`;
@@ -66,13 +69,22 @@ test("stores per-document and aggregate why-only DAG metadata", () => {
     const document = path.relative(documentSetRoot, file).replaceAll("\\", "/");
     assert.equal(sidecar.document, document);
     assert.ok(Array.isArray(sidecar.whyLinks));
+    assert.deepEqual(
+      sidecar.whyLinks,
+      manifest.edges
+        .filter((edge) => edge.from === document)
+        .sort((left, right) => left.order - right.order)
+        .map((edge) => edge.to),
+    );
     assert.equal(Object.hasOwn(sidecar, "recallLinks"), false);
   }
 
-  const manifest = JSON.parse(
-    readFileSync(path.join(documentSetRoot, ".leanmd", "dependencies.json"), "utf8"),
-  );
   assert.ok(manifest.edges.every((edge) => edge.kind === "why"));
+  assert.ok(
+    manifest.edges.every(
+      (edge) => Number.isInteger(edge.order) && edge.order >= 0,
+    ),
+  );
   assert.doesNotMatch(JSON.stringify(manifest), /recall/i);
 });
 

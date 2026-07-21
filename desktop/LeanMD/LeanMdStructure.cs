@@ -4,12 +4,14 @@ using System.Text.Json;
 
 namespace LeanMD;
 
-internal readonly record struct ExplorationMapEdge(string From, string To);
+internal readonly record struct ExplorationMapEdge(string From, string To, int Order = 0);
 
 internal sealed class LeanMdStructure
 {
     private readonly HashSet<string> _documents;
     private readonly HashSet<string> _edgeKeys;
+    private readonly Dictionary<string, int> _edgeOrders;
+    private readonly Dictionary<string, int> _documentOrders;
     private readonly Dictionary<string, List<string>> _parents;
     private readonly Dictionary<string, List<string>> _children;
 
@@ -21,6 +23,8 @@ internal sealed class LeanMdStructure
         IReadOnlyList<ExplorationMapEdge> edges,
         HashSet<string> documents,
         HashSet<string> edgeKeys,
+        Dictionary<string, int> edgeOrders,
+        Dictionary<string, int> documentOrders,
         Dictionary<string, List<string>> parents,
         Dictionary<string, List<string>> children)
     {
@@ -31,6 +35,8 @@ internal sealed class LeanMdStructure
         Edges = edges;
         _documents = documents;
         _edgeKeys = edgeKeys;
+        _edgeOrders = edgeOrders;
+        _documentOrders = documentOrders;
         _parents = parents;
         _children = children;
     }
@@ -69,6 +75,7 @@ internal sealed class LeanMdStructure
                 rootPath,
             };
             var edgeKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var edgeOrders = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             var edges = new List<ExplorationMapEdge>();
             var parents = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
             var children = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
@@ -100,9 +107,23 @@ internal sealed class LeanMdStructure
                 string key = EdgeKey(from, to);
                 if (!edgeKeys.Add(key)) continue;
 
+                int order = children.TryGetValue(from, out List<string>? existingTargets)
+                    ? existingTargets.Count
+                    : 0;
+                if (edgeElement.TryGetProperty("order", out JsonElement orderElement))
+                {
+                    if (orderElement.ValueKind != JsonValueKind.Number ||
+                        !orderElement.TryGetInt32(out order) ||
+                        order < 0)
+                    {
+                        return null;
+                    }
+                }
+
                 documents.Add(from);
                 documents.Add(to);
-                edges.Add(new ExplorationMapEdge(from, to));
+                edgeOrders.Add(key, order);
+                edges.Add(new ExplorationMapEdge(from, to, order));
                 AddToLookup(children, from, to);
                 AddToLookup(parents, to, from);
             }
@@ -125,6 +146,28 @@ internal sealed class LeanMdStructure
 
             if (reachable.Count != documents.Count) return null;
 
+            var documentOrders = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var traversal = new Stack<string>();
+            traversal.Push(rootPath);
+            while (traversal.Count > 0)
+            {
+                string current = traversal.Pop();
+                if (!documentOrders.TryAdd(current, documentOrders.Count) ||
+                    !children.TryGetValue(current, out List<string>? targets))
+                {
+                    continue;
+                }
+
+                string[] orderedTargets = targets
+                    .OrderBy(target => edgeOrders[EdgeKey(current, target)])
+                    .ThenBy(target => target, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                for (int index = orderedTargets.Length - 1; index >= 0; index--)
+                {
+                    traversal.Push(orderedTargets[index]);
+                }
+            }
+
             string fingerprint = Convert.ToHexString(
                 SHA256.HashData(Encoding.UTF8.GetBytes(source)));
             return new LeanMdStructure(
@@ -135,6 +178,8 @@ internal sealed class LeanMdStructure
                 edges,
                 documents,
                 edgeKeys,
+                edgeOrders,
+                documentOrders,
                 parents,
                 children);
         }
@@ -153,6 +198,20 @@ internal sealed class LeanMdStructure
     public bool ContainsEdge(ExplorationMapEdge edge)
     {
         return _edgeKeys.Contains(EdgeKey(edge.From, edge.To));
+    }
+
+    public int GetEdgeOrder(string from, string to)
+    {
+        return _edgeOrders.TryGetValue(EdgeKey(from, to), out int order)
+            ? order
+            : int.MaxValue;
+    }
+
+    public int GetDocumentOrder(string documentPath)
+    {
+        return _documentOrders.TryGetValue(Path.GetFullPath(documentPath), out int order)
+            ? order
+            : int.MaxValue;
     }
 
     public IReadOnlyList<string>? FindShortestConnectorPath(

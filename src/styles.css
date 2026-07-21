@@ -531,6 +531,57 @@ a:focus-visible {
   text-underline-offset: 3px;
 }
 
+.markdown-body .footnote-ref {
+  margin-left: 0.08em;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.74em;
+  line-height: 0;
+}
+
+.markdown-body .footnote-ref a,
+.markdown-body .footnote-backref {
+  text-decoration: none;
+}
+
+.markdown-body .footnotes-sep {
+  width: 34%;
+  margin: 3.2rem 0 1.25rem;
+  border: 0;
+  border-top: 1px solid var(--line-strong);
+}
+
+.markdown-body .footnotes {
+  color: var(--muted);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.88rem;
+  line-height: 1.62;
+}
+
+.markdown-body .footnotes-list {
+  padding-left: 1.6rem;
+}
+
+.markdown-body .footnote-item {
+  scroll-margin-top: 80px;
+}
+
+.markdown-body .footnote-item + .footnote-item {
+  margin-top: 0.68rem;
+}
+
+.markdown-body .footnote-item > :first-child {
+  margin-top: 0;
+}
+
+.markdown-body .footnote-item > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body .footnote-backref {
+  margin-left: 0.28em;
+  font-size: 0.9em;
+}
+
 .markdown-body strong {
   font-weight: 700;
 }

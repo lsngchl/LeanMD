@@ -1,6 +1,7 @@
 import MarkdownIt from "markdown-it";
 import katex from "katex";
 import "katex/dist/katex.min.css";
+import footnotePlugin from "markdown-it-footnote";
 import { mathPlugin } from "./math-plugin.js";
 import { sourceMapPlugin } from "./source-map-plugin.js";
 
@@ -13,7 +14,9 @@ const markdown = new MarkdownIt({
   katexOptions: {
     strict: false,
   },
-}).use(sourceMapPlugin);
+})
+  .use(footnotePlugin)
+  .use(sourceMapPlugin);
 
 export function renderMarkdown(source) {
   return markdown.render(source);
