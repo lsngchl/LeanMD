@@ -7,7 +7,7 @@ A small, local-first Markdown viewer that renders LaTeX written with either
 
 - Viewer source: `index.html` and `src/`
 - Windows desktop wrapper and installer scripts: `desktop/LeanMD/`
-- Complete LeanMD example workspace: `leanmd-example/`
+- LeanMD document workspace: `leanmd/`
 - Application asset scripts: `scripts/`
 - Automated tests: `test/`
 
@@ -89,8 +89,8 @@ Validate any document set, or regenerate its document sidecars and complete mani
 editing why links, by passing its path:
 
 ```sh
-node leanmd-example/validate-why-dag.js path/to/document_set
-node leanmd-example/validate-why-dag.js path/to/document_set --write
+node leanmd/validate-why-dag.js path/to/document_set
+node leanmd/validate-why-dag.js path/to/document_set --write
 ```
 
 Run the complete test suite against one or more document sets with:

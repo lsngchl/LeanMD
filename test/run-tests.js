@@ -26,7 +26,7 @@ for (const directory of documentSetDirectories) {
 }
 
 const validatorPath = fileURLToPath(
-  new URL("../leanmd-example/validate-why-dag.js", import.meta.url),
+  new URL("../leanmd/validate-why-dag.js", import.meta.url),
 );
 const testPaths = {
   appShell: fileURLToPath(new URL("app-shell.test.js", import.meta.url)),
