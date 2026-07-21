@@ -27,8 +27,17 @@ When the user asks to modify a LeanMD node, limit all document-content edits to 
 Do not edit the content of ancestors, siblings, or any other node outside that subtree unless the user explicitly expands the scope.
 
 Write only the Markdown document content and its `"why"` links.
-Do not directly create, edit, or delete LeanMD metadata files.
+Do not directly create, edit, or delete LeanMD metadata files except as part of the complete node deletion rule below.
 
 After changing `"why"` links, use `validate-why-dag.js --write`.
 The script manages document `.md.leanmd.json` sidecars, `shortcut.leanmd.json` files, and `.leanmd/dependencies.json`.
 The LeanMD app manages `.unresolved` sidecars, `.leanmd/current-context.json`, and `.leanmd/exploration-map.json`.
+
+## Complete node deletion
+
+When deleting a LeanMD node, delete its entire same-named node directory recursively; never delete only the Markdown file.
+The deletion includes the node's Markdown document, its `.md.leanmd.json` sidecar, its `.unresolved` marker if present, every descendant node directory, and every shortcut or generated metadata file contained in that subtree.
+Remove every `"why"` link in surviving Markdown documents that targets any deleted document, and remove shortcut directories in surviving branches that point into the deleted subtree.
+Deleting metadata contained in the node directory is required for complete node deletion and is the sole exception to the general prohibition on direct metadata deletion.
+Do not leave orphan `.unresolved` markers or `.md.leanmd.json` sidecars for deleted documents.
+After deletion, run `validate-why-dag.js --write` and then run it again without `--write` to confirm that the surviving document set is valid.
