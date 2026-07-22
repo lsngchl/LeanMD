@@ -11,15 +11,23 @@ const documentSetArgument = process.argv
   .slice(2)
   .find((argument) => !argument.startsWith("--"));
 if (!documentSetArgument) {
-  throw new Error("Usage: node validate-why-dag.js <document-set-directory> [--write]");
+  throw new Error(
+    "Usage: node leanmd/validate-why-dag.js <document-set-directory> [--write]",
+  );
 }
 
 const documentSetDirectory = path.resolve(process.cwd(), documentSetArgument);
-const dependencyPath = path.join(documentSetDirectory, ".leanmd", "dependencies.json");
+const rootDocument = "root.md";
+const rootDocumentPath = path.join(documentSetDirectory, rootDocument);
+const nodesDirectory = path.join(documentSetDirectory, "nodes");
+const metadataDirectory = path.join(documentSetDirectory, ".leanmd");
+const dependencyPath = path.join(metadataDirectory, "dependencies.json");
 const shouldWrite = process.argv.includes("--write");
+const maximumPortableDocumentPathLength = 180;
+const nodeFilenamePattern = /^[a-z0-9][a-z0-9_-]*\.(?:md|markdown)$/u;
 
 function fail(message) {
-  throw new Error(`Invalid why DAG: ${message}`);
+  throw new Error(`Invalid LeanMD why DAG: ${message}`);
 }
 
 function readNormalizedText(filePath) {
@@ -30,35 +38,60 @@ function normalizedRelativePath(value) {
   return value.replaceAll("\\", "/");
 }
 
-function documentDirectory(document) {
-  const directory = path.posix.dirname(document);
-  return directory === "." ? "" : directory;
+if (!existsSync(nodesDirectory)) {
+  fail(`nodes directory is missing: ${nodesDirectory}`);
+}
+if (!existsSync(rootDocumentPath)) {
+  fail(`root document is missing: ${rootDocumentPath}`);
 }
 
-function parentDirectory(directory) {
-  if (directory.length === 0) return "";
-  const parent = path.posix.dirname(directory);
-  return parent === "." ? "" : parent;
+const nodeEntries = readdirSync(nodesDirectory, { withFileTypes: true });
+const nestedDirectories = nodeEntries
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name);
+if (nestedDirectories.length > 0) {
+  fail(`nodes must be flat; nested directories found: ${nestedDirectories.join(", ")}`);
 }
 
-function markdownFiles(directory) {
-  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) return markdownFiles(entryPath);
-    if (!entry.isFile() || path.extname(entry.name).toLowerCase() !== ".md") {
-      return [];
-    }
-    return [normalizedRelativePath(path.relative(documentSetDirectory, entryPath))];
-  });
+const unexpectedFiles = nodeEntries
+  .filter(
+    (entry) =>
+      entry.isFile() &&
+      !nodeFilenamePattern.test(entry.name) &&
+      !entry.name.endsWith(".unresolved"),
+  )
+  .map((entry) => entry.name);
+if (unexpectedFiles.length > 0) {
+  fail(`unexpected files in nodes: ${unexpectedFiles.join(", ")}`);
 }
 
-function whyShortcutFiles(directory) {
-  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) return whyShortcutFiles(entryPath);
-    if (!entry.isFile() || entry.name !== "shortcut.leanmd.json") return [];
-    return [normalizedRelativePath(path.relative(documentSetDirectory, entryPath))];
-  });
+const documents = new Set([
+  rootDocument,
+  ...nodeEntries
+    .filter((entry) => entry.isFile() && nodeFilenamePattern.test(entry.name))
+    .map((entry) => `nodes/${entry.name}`)
+    .sort(),
+]);
+if (documents.size === 1) {
+  fail("expected at least one Markdown document directly under nodes");
+}
+
+for (const document of documents) {
+  if (document.length > maximumPortableDocumentPathLength) {
+    fail(
+      `document path exceeds the ${maximumPortableDocumentPathLength}-character portability budget: ${document}`,
+    );
+  }
+}
+
+const unresolvedMarkers = nodeEntries
+  .filter((entry) => entry.isFile() && entry.name.endsWith(".unresolved"))
+  .map((entry) => entry.name);
+for (const marker of unresolvedMarkers) {
+  const basename = marker.slice(0, -".unresolved".length);
+  if (!documents.has(`nodes/${basename}.md`) && !documents.has(`nodes/${basename}.markdown`)) {
+    fail(`orphan unresolved marker: nodes/${marker}`);
+  }
 }
 
 function markdownLinks(sourceDocument) {
@@ -66,10 +99,15 @@ function markdownLinks(sourceDocument) {
   const source = readFileSync(sourcePath, "utf8");
   const links = [];
   const linkPattern =
-    /\]\(([^\s)#?]+\.md)(?:[?#][^\s)]*)?(?:\s+(?:"([^"]*)"|'([^']*)'))?\)/giu;
+    /\]\(([^\s)#?]+\.(?:md|markdown))(?:[?#][^\s)]*)?(?:\s+(?:"([^"]*)"|'([^']*)'))?\)/giu;
 
   for (const match of source.matchAll(linkPattern)) {
-    const decodedTarget = decodeURIComponent(match[1]);
+    let decodedTarget;
+    try {
+      decodedTarget = decodeURIComponent(match[1]);
+    } catch {
+      fail(`invalid percent-encoded link in ${sourceDocument}: ${match[1]}`);
+    }
     const absoluteTarget = path.resolve(path.dirname(sourcePath), decodedTarget);
     links.push({
       source: sourceDocument,
@@ -81,7 +119,6 @@ function markdownLinks(sourceDocument) {
   return links;
 }
 
-const documents = new Set(markdownFiles(documentSetDirectory));
 const allLinks = [...documents].flatMap(markdownLinks);
 const whyOrderByDocument = new Map();
 const whyLinks = allLinks
@@ -94,10 +131,12 @@ const whyLinks = allLinks
 
 for (const link of whyLinks) {
   if (!documents.has(link.target)) {
-    fail(`why link leaves the document set: ${link.source} -> ${link.target}`);
+    fail(`why link leaves the flat node set: ${link.source} -> ${link.target}`);
   }
 }
 
+const outgoing = new Map([...documents].map((document) => [document, []]));
+const incomingCount = new Map([...documents].map((document) => [document, 0]));
 const whyEdgeKeys = new Set();
 const whyEdges = [];
 for (const link of whyLinks) {
@@ -114,18 +153,12 @@ for (const link of whyLinks) {
     kind: "why",
     order: link.order,
   });
-}
-
-const outgoing = new Map([...documents].map((document) => [document, []]));
-const incomingCount = new Map([...documents].map((document) => [document, 0]));
-for (const edge of whyEdges) {
-  outgoing.get(edge.from).push(edge.to);
-  incomingCount.set(edge.to, incomingCount.get(edge.to) + 1);
+  outgoing.get(link.source).push(link.target);
+  incomingCount.set(link.target, incomingCount.get(link.target) + 1);
 }
 
 const state = new Map([...documents].map((document) => [document, "unvisited"]));
 const activePath = [];
-
 function checkForCycles(document) {
   state.set(document, "active");
   activePath.push(document);
@@ -133,8 +166,7 @@ function checkForCycles(document) {
   for (const target of outgoing.get(document)) {
     if (state.get(target) === "active") {
       const cycleStart = activePath.indexOf(target);
-      const cycle = [...activePath.slice(cycleStart), target].join(" -> ");
-      fail(`cycle found: ${cycle}`);
+      fail(`cycle found: ${[...activePath.slice(cycleStart), target].join(" -> ")}`);
     }
     if (state.get(target) === "unvisited") checkForCycles(target);
   }
@@ -154,6 +186,9 @@ if (roots.length !== 1) {
   fail(`expected one root, found ${roots.length}: ${roots.join(", ")}`);
 }
 const [root] = roots;
+if (root !== rootDocument) {
+  fail(`root.md must be the single DAG root, found ${root}`);
+}
 
 const reachable = new Set();
 const depth = new Map([[root, 0]]);
@@ -172,28 +207,6 @@ if (unreachable.length > 0) {
   fail(`documents are unreachable from ${root}: ${unreachable.join(", ")}`);
 }
 
-for (const document of documents) {
-  if (document === root) continue;
-  const directory = documentDirectory(document);
-  const folderName = path.posix.basename(directory);
-  const documentName = path.posix.basename(document, path.posix.extname(document));
-  if (folderName !== documentName) {
-    fail(`document must live in its own same-named folder: ${document}`);
-  }
-
-  const canonicalParents = whyEdges.filter(
-    (edge) =>
-      edge.to === document &&
-      documentDirectory(edge.from) === parentDirectory(directory),
-  );
-  if (canonicalParents.length !== 1) {
-    fail(
-      `${document} must have exactly one canonical parent folder, found ` +
-        `${canonicalParents.length}`,
-    );
-  }
-}
-
 whyEdges.sort(
   (left, right) =>
     depth.get(left.from) - depth.get(right.from) ||
@@ -202,88 +215,24 @@ whyEdges.sort(
     left.to.localeCompare(right.to),
 );
 
-let updatedSidecarCount = 0;
-for (const document of documents) {
-  const sidecarPath = path.join(documentSetDirectory, `${document}.leanmd.json`);
-  const whyTargets = [...new Set(outgoing.get(document))];
-  const generatedSidecar = `${JSON.stringify(
-    { document, whyLinks: whyTargets },
-    null,
-    2,
-  )}\n`;
+const generated = `${JSON.stringify(
+  {
+    formatVersion: 2,
+    layout: "flat",
+    root,
+    edges: whyEdges,
+  },
+  null,
+  2,
+)}\n`;
 
-  if (shouldWrite) {
-    if (!existsSync(sidecarPath) || readNormalizedText(sidecarPath) !== generatedSidecar) {
-      writeFileSync(sidecarPath, generatedSidecar, "utf8");
-      updatedSidecarCount += 1;
-    }
-  } else if (!existsSync(sidecarPath)) {
-    fail(`${document}.leanmd.json is missing; run with --write to generate it`);
-  } else if (readNormalizedText(sidecarPath) !== generatedSidecar) {
-    fail(`${document}.leanmd.json is stale; run with --write to regenerate it`);
-  }
-}
-
-const shortcutEdges = whyEdges.filter(
-  (edge) =>
-    documentDirectory(edge.from) !== parentDirectory(documentDirectory(edge.to)),
-);
-const expectedShortcutPaths = new Set();
-let updatedShortcutCount = 0;
-for (const edge of shortcutEdges) {
-  const shortcutDirectory = path.posix.join(
-    documentDirectory(edge.from),
-    path.posix.basename(documentDirectory(edge.to)),
-  );
-  const shortcutDocument = path.posix.join(shortcutDirectory, "shortcut.leanmd.json");
-  if (expectedShortcutPaths.has(shortcutDocument)) {
-    fail(`why shortcut path collision: ${shortcutDocument}`);
-  }
-  expectedShortcutPaths.add(shortcutDocument);
-
-  const shortcutPath = path.join(documentSetDirectory, shortcutDocument);
-  const generatedShortcut = `${JSON.stringify(
-    { kind: "why-shortcut", source: edge.from, target: edge.to },
-    null,
-    2,
-  )}\n`;
-  if (shouldWrite) {
-    mkdirSync(path.dirname(shortcutPath), { recursive: true });
-    if (!existsSync(shortcutPath) || readNormalizedText(shortcutPath) !== generatedShortcut) {
-      writeFileSync(shortcutPath, generatedShortcut, "utf8");
-      updatedShortcutCount += 1;
-    }
-  } else if (!existsSync(shortcutPath)) {
-    fail(`${shortcutDocument} is missing; run with --write to generate it`);
-  } else if (readNormalizedText(shortcutPath) !== generatedShortcut) {
-    fail(`${shortcutDocument} is stale; run with --write to regenerate it`);
-  }
-}
-
-const unexpectedShortcuts = whyShortcutFiles(documentSetDirectory).filter(
-  (shortcut) => !expectedShortcutPaths.has(shortcut),
-);
-if (unexpectedShortcuts.length > 0) {
-  fail(`unexpected why shortcuts: ${unexpectedShortcuts.join(", ")}`);
-}
-
-const generated = `${JSON.stringify({ root, edges: whyEdges }, null, 2)}\n`;
 if (shouldWrite) {
-  console.log(
-    updatedSidecarCount > 0
-      ? `Updated ${updatedSidecarCount} document why sidecar files.`
-      : "Document why sidecar files are already up to date.",
-  );
-  console.log(
-    updatedShortcutCount > 0
-      ? `Updated ${updatedShortcutCount} why shortcut files.`
-      : "Why shortcut files are already up to date.",
-  );
+  mkdirSync(metadataDirectory, { recursive: true });
   if (!existsSync(dependencyPath) || readNormalizedText(dependencyPath) !== generated) {
     writeFileSync(dependencyPath, generated, "utf8");
-    console.log("Updated dependencies.json from Markdown why links.");
+    console.log("Updated LeanMD dependencies.json from Markdown why links.");
   } else {
-    console.log("dependencies.json is already up to date.");
+    console.log("LeanMD dependencies.json is already up to date.");
   }
 } else if (!existsSync(dependencyPath)) {
   fail("dependencies.json is missing; run with --write to generate it");
@@ -296,7 +245,7 @@ const sharedDocuments = [...incomingCount]
   .map(([document, count]) => `${document} (${count} incoming why edges)`);
 
 console.log(
-  `Valid why DAG: ${documents.size} documents, ${whyEdges.length} why edges, root ${root}.`,
+  `Valid LeanMD DAG: ${documents.size} flat documents, ${whyEdges.length} why edges, root ${root}.`,
 );
 console.log(
   sharedDocuments.length > 0

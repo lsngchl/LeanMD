@@ -10,6 +10,7 @@ A small, local-first Markdown viewer that renders LaTeX written with either
 - Viewer source: `index.html` and `src/`
 - Windows desktop wrapper and installer scripts: `desktop/LeanMD/`
 - LeanMD document workspace: `leanmd/`
+- Hierarchical LeanMD migration workspace: `leanmd-legacy/`
 - Application asset scripts: `scripts/`
 - Automated tests: `test/`
 
@@ -52,11 +53,10 @@ target outside that structure still opens an independent window.
 [What this meant](./definition.md "recall")
 ```
 
-Every Markdown document in a structured LeanMD document set has an adjacent
-`<document>.md.leanmd.json` sidecar containing only its outgoing `"why"` links.
-The generated `.leanmd/dependencies.json` manifest combines those sidecars into
-the complete why DAG. `"recall"` links remain navigation metadata in Markdown
-and are ignored by why-DAG validation.
+The LeanMD validator reads the `"why"` links in `root.md` and `nodes/*.md`
+directly and writes the complete DAG to the generated
+`.leanmd/dependencies.json` manifest. `"recall"` links remain navigation
+metadata in Markdown and are ignored by why-DAG validation.
 
 When the desktop viewer finds `.leanmd/dependencies.json` in the current
 document's directory or one of its ancestors, it treats that directory as a
@@ -81,25 +81,23 @@ toolbar and reflects it on every visible occurrence of the node in the map.
 Unresolved state is independent of exploration state: resetting the map may hide
 the node, but the marker remains and is shown again when the node is revealed.
 
-The document-set directory itself is the root document's folder. Every non-root
-document lives in a same-named child folder of its canonical why parent. If
-another parent uses that document, the second location contains a portable
-`shortcut.leanmd.json` pointing to the canonical Markdown file instead of a
-duplicate. OS-specific `.lnk` and symbolic links are not required.
+The document-set entry point is `root.md`. Every other authored document lives
+directly under `nodes/`, so logical proof depth does not increase filesystem
+path depth. Node filenames are unique lowercase ASCII slugs, while the first
+level-one heading supplies the displayed title.
 
-Validate any document set, or regenerate its document sidecars and complete manifest after
-editing why links, by passing its path:
+Validate a document set, or regenerate its complete manifest after editing why
+links, by passing its path:
 
 ```sh
 node leanmd/validate-why-dag.js path/to/document_set
 node leanmd/validate-why-dag.js path/to/document_set --write
 ```
 
-Run the complete test suite against one or more document sets with:
+Run the app feature test suite with:
 
 ```sh
-npm test -- path/to/document_set
-npm test -- path/to/first_document_set path/to/second_document_set
+npm test
 ```
 
 ## Run locally

@@ -1,9 +1,14 @@
 # LeanMD 문서 집합 형식
 
-이 문서는 LeanMD 문서 집합의 링크 형식, 저장 구조, 생성 메타데이터와 검증 방법을 설명한다.
-에이전트 작업 규칙은 [AGENTS.md](AGENTS.md), 수학 문서 작성 원칙은 [STYLE.md](STYLE.md)를 따른다.
+LeanMD 문서 집합은 증명 DAG의 논리적 깊이와 파일시스템의 물리적 깊이를 분리한다.
+진입 문서는 문서 집합 최상위의 `root.md`에 두고, 나머지 작성 문서는 `nodes/` 바로 아래에 두며, 증명 관계는 Markdown의 `why` 링크와 여기서 생성되는 `.leanmd/dependencies.json`으로 표현한다.
 
-## 1. Markdown 문서와 링크
+## 작업 공간 구성요소
+
+`AGENTS.md`, `README.md`, `STYLE.md`는 LeanMD 문서 작업 공간의 규칙과 형식을 정의하는 구성요소이므로 함께 유지한다.
+새 작업 공간을 만들 때 이 세 파일을 함께 복사하고, 문서 집합의 구조 검사에는 `validate-why-dag.js`를 사용한다.
+
+## Markdown 문서와 링크
 
 증명 내용은 Markdown 문서에 작성한다.
 산문의 한 문장은 Markdown 소스의 한 줄에 쓰고, 문단은 빈 줄로 구분하며, 표시 수식은 별도 줄에 둔다.
@@ -11,8 +16,8 @@
 링크의 title로 LeanMD에서의 역할을 지정한다.
 
 ```md
-[근거 문서](target.md "why")
-[정의 또는 문맥](target.md "recall")
+[근거 문서](./nodes/supporting_argument.md "why")
+[정의 또는 문맥](../root.md "recall")
 ```
 
 - `why` 링크는 현재 문서에서 대상 문서로 향하는 증명 의존성이다.
@@ -21,31 +26,29 @@
 
 모든 `why` 링크는 하나의 루트를 가지며 순환이 없고 모든 문서가 루트에서 도달 가능한 DAG를 이루어야 한다.
 
-## 2. Canonical 폴더 트리
-
-문서 집합의 최상위 폴더에는 루트 Markdown 문서를 둔다.
-비루트 문서는 canonical `why` 부모 아래에서 자신과 같은 이름의 폴더 안에 둔다.
+## 평면 문서 구조
 
 ```text
 document_set/
-├─ root_theorem.md
-└─ child_argument/
-   └─ child_argument.md
+├─ root.md
+├─ .leanmd/
+│  └─ dependencies.json
+└─ nodes/
+   ├─ supporting_argument.md
+   └─ shared_lemma.md
 ```
 
-여러 부모가 같은 문서를 `why`로 사용하는 경우 Markdown 문서는 canonical 위치에 한 번만 저장한다.
-다른 부모 아래의 대응 폴더에는 validator가 `shortcut.leanmd.json`을 생성한다.
-내용을 복제하거나 OS symlink, hard link 또는 `.lnk` 파일을 사용하지 않는다.
+- 문서 집합의 진입점은 최상위의 `root.md`로 고정한다.
+- 루트를 제외한 모든 작성 문서는 `nodes/` 바로 아래에 두고 하위 디렉터리를 만들지 않는다.
+- `nodes/`의 모든 문서 파일명은 문서 집합 안에서 고유한 소문자 ASCII slug여야 한다.
+- 문서의 표시 제목은 파일명이 아니라 첫 번째 `#` 제목으로 정한다.
+- `why`와 `recall`은 표준 Markdown 상대 링크를 사용한다.
+- 논리적 증명 깊이는 폴더 깊이에 영향을 주지 않는다.
 
-## 3. 생성 메타데이터
+## 생성 메타데이터와 앱 상태
 
 작성자는 Markdown 본문과 그 안의 링크만 직접 편집한다.
-
-`validate-why-dag.js --write`가 다음 파일을 Markdown의 `why` 링크에서 생성하거나 갱신한다.
-
-- `<document>.md.leanmd.json`
-- `shortcut.leanmd.json`
-- `.leanmd/dependencies.json`
+`validate-why-dag.js --write`는 모든 Markdown의 `why` 링크를 직접 읽어 `.leanmd/dependencies.json` 하나를 생성하거나 갱신한다.
 
 LeanMD 앱은 다음 상태 파일을 관리한다.
 
@@ -53,20 +56,20 @@ LeanMD 앱은 다음 상태 파일을 관리한다.
 - `.leanmd/current-context.json`
 - `.leanmd/exploration-map.json`
 
-이 메타데이터 파일들은 직접 편집하지 않는다.
+이 상태 파일들은 의존성 DAG를 구성하는 입력으로 사용하지 않는다.
 
-## 4. 검증
+## 검증
 
-현재 문서 집합을 검증하려면 다음 명령을 실행한다.
+문서 집합을 검증하려면 작업 공간 루트에서 다음 명령을 실행한다.
 
 ```sh
 node validate-why-dag.js path/to/document_set
 ```
 
-Markdown의 `why` 링크를 기준으로 생성 메타데이터를 갱신한 뒤 검증하려면 `--write`를 사용한다.
+Markdown 링크에서 manifest를 생성하거나 갱신한 뒤 검증하려면 `--write`를 사용한다.
 
 ```sh
 node validate-why-dag.js path/to/document_set --write
 ```
 
-Validator는 canonical 폴더 구조, shortcut과 sidecar의 일치, 하나의 루트를 가진 acyclic `why` graph, 그리고 모든 문서의 도달 가능성을 확인한다.
+Validator는 고정된 `root.md` 진입점, acyclic `why` graph, 전체 도달 가능성, 평면 `nodes/` 구조, 문서별 경로 길이 예산을 검사한다.

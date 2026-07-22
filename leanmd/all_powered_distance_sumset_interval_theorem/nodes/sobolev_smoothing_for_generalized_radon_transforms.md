@@ -29,7 +29,7 @@ C_{s,\chi,I}\|f\|_{H^s(V)},
 
 ## Proof
 
-By the [coarea formula](coarea_formula/coarea_formula.md "why"), the [Schwartz kernel](schwartz_kernel/schwartz_kernel.md "why") of \(T_r^\chi\) is
+By the [coarea formula](./coarea_formula.md "why"), the [Schwartz kernel](./schwartz_kernel.md "why") of \(T_r^\chi\) is
 \[
 K_r(x,y)
 =
@@ -44,7 +44,8 @@ K_r(x,y)
 e^{i\tau(\Phi(x,y)-r)}
 \chi(x,y)|\nabla_y\Phi(x,y)|\,d\tau.
 \]
-The phase \(\tau(\Phi-r)\) parametrizes \(C_r\). Since the amplitude has order \(0\), there is one frequency variable, and both base spaces have dimension \(n\), the operator \(T_r^\chi\) is a Fourier integral operator of order
+The phase \(\tau(\Phi-r)\) parametrizes \(C_r\).
+Since the amplitude has order \(0\), there is one frequency variable, and both base spaces have dimension \(n\), the operator \(T_r^\chi\) is a Fourier integral operator of order
 \[
 \mu
 =
@@ -64,7 +65,8 @@ For \(r\in I\), only the compact set
 \[
 \{(x,y)\in\operatorname{spt}\chi:\Phi(x,y)\in I\}
 \]
-is relevant. A finite cover by canonical-graph coordinate patches makes the preceding estimate uniform in \(r\in I\), which gives \((\mathrm{SM})\). \(\square\)
+is relevant.
+A finite cover by canonical-graph coordinate patches makes the preceding estimate uniform in \(r\in I\), which gives \((\mathrm{SM})\). \(\square\)
 
 ## Application here
 

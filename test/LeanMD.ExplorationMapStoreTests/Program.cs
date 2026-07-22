@@ -104,6 +104,30 @@ try
         ("a/a.md", "a/x/x.md"),
         ("a/x/x.md", "a/x/target.md"));
 
+    string flatWorkspace = Path.Combine(testRoot, "flat-workspace");
+    string flatMetadata = Path.Combine(flatWorkspace, ".leanmd");
+    string flatRoot = WriteDocument(flatWorkspace, "root.md");
+    string flatBranch = WriteDocument(flatWorkspace, "nodes/branch.md");
+    string flatShared = WriteDocument(flatWorkspace, "nodes/shared.md");
+    WriteFlatDependencies(
+        flatMetadata,
+        "root.md",
+        ("root.md", "nodes/branch.md"),
+        ("root.md", "nodes/shared.md"),
+        ("nodes/branch.md", "nodes/shared.md"));
+
+    LeanMdStructure? flatStructure = LeanMdStructure.Load(flatMetadata);
+    Assert(flatStructure is not null &&
+        flatStructure.ContainsDocument(flatRoot) &&
+        flatStructure.ContainsDocument(flatBranch) &&
+        flatStructure.ContainsDocument(flatShared),
+        "The desktop structure loader should accept a versioned flat workspace.");
+    Assert(PathsMatch(
+            flatStructure!.FindShortestConnectorPath([flatRoot], flatShared),
+            flatRoot,
+            flatShared),
+        "The desktop structure loader should navigate flat v2 nodes by manifest edges.");
+
     var mapState = new ExplorationMapState(
         rootDocument,
         [rootDocument, branchA, branchB, intermediate, deepTarget],
@@ -221,6 +245,36 @@ static void WriteDependencies(
         Path.Combine(metadataDirectory, "dependencies.json"),
         JsonSerializer.Serialize(new
         {
+            root,
+            edges = orderedEdges,
+        }, new JsonSerializerOptions { WriteIndented = true }));
+}
+
+static void WriteFlatDependencies(
+    string metadataDirectory,
+    string root,
+    params (string From, string To)[] edges)
+{
+    Directory.CreateDirectory(metadataDirectory);
+    var nextOrderBySource = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+    object[] orderedEdges = edges.Select(edge =>
+    {
+        int order = nextOrderBySource.GetValueOrDefault(edge.From);
+        nextOrderBySource[edge.From] = order + 1;
+        return (object)new
+        {
+            from = edge.From,
+            to = edge.To,
+            kind = "why",
+            order,
+        };
+    }).ToArray();
+    File.WriteAllText(
+        Path.Combine(metadataDirectory, "dependencies.json"),
+        JsonSerializer.Serialize(new
+        {
+            formatVersion = 2,
+            layout = "flat",
             root,
             edges = orderedEdges,
         }, new JsonSerializerOptions { WriteIndented = true }));
