@@ -1,6 +1,5 @@
 import MarkdownIt from "markdown-it";
 import katex from "katex";
-import "katex/dist/katex.min.css";
 import footnotePlugin from "markdown-it-footnote";
 import { mathPlugin } from "./math-plugin.js";
 import { sourceMapPlugin } from "./source-map-plugin.js";
