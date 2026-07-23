@@ -1,30 +1,18 @@
 # Pullback of a Distribution by a Submersion
 
-Let \(F:X\to Y\) be a smooth submersion between Euclidean domains, and let \(u\in\mathcal D'(Y)\).
-Regard distributions as acting on compactly supported smooth densities, with the Euclidean volume element understood implicitly.
-For every compactly supported smooth density \(\omega\) on \(X\), integration along the fibers of \(F\) defines a density \(F_*\omega\) on \(Y\).
-The pullback of \(u\) is defined by
+Let \(U\subset\mathbb R^m\) and \(V\subset\mathbb R^n\) be open, let \(F:U\to V\) be a smooth submersion, and let \(u\in\mathcal D'(V)\).
+Because \(F\) is a submersion, pushforward defines a continuous linear map
+\[
+F_*:\mathcal D(U)\to\mathcal D(V).
+\]
+Consequently, the pullback of \(u\) is well-defined by
 \[
 \langle F^*u,\omega\rangle
 :=
-\langle u,F_*\omega\rangle.
+\langle u,F_*\omega\rangle,
+\qquad \omega\in\mathcal D(U).
 \]
-The submersion theorem gives local coordinates \((z,t)\) on \(X\) and \(t\) on \(Y\) in which
-\[
-F(z,t)=t.
-\]
-If
-\[
-\omega=\varphi(z,t)|dz\,dt|,
-\]
-then
-\[
-F_*\omega
-=
-\left(\int\varphi(z,t)\,dz\right)|dt|,
-\]
-so in these coordinates \(F^*u=1_z\otimes u_t\), where \(1_z\) denotes integration in the fiber variable.
-The use of densities makes this definition independent of the chosen submersion coordinates.
+That is, \(F^*:\mathcal D'(V)\to\mathcal D'(U)\) is the dual map of \(F_*:\mathcal D(U)\to\mathcal D(V)\).
 
 Now let \(g:V\subset\mathbb R^n\to\mathbb R\) be smooth, and suppose that
 \[
@@ -38,11 +26,26 @@ g^*\delta_r
 =
 \delta(g-r).
 \]
-For every test function \(\varphi\in C_c^\infty(V)\),
+For \(\varphi\in\mathcal D(V)\), the pushforward \(g_*\varphi\) is smooth near \(r\), with
 \[
-\left\langle\delta(g-r),\varphi\right\rangle
+(g_*\varphi)(r)
 =
 \int_{\{g=r\}}
 \frac{\varphi(y)}{|\nabla g(y)|}\,d\sigma_r(y).
+\]
+Therefore, the definition of pullback gives
+\[
+\begin{aligned}
+\left\langle\delta(g-r),\varphi\right\rangle
+&=
+\left\langle g^*\delta_r,\varphi\right\rangle\\
+&=
+\left\langle\delta_r,g_*\varphi\right\rangle\\
+&=
+(g_*\varphi)(r)\\
+&=
+\int_{\{g=r\}}
+\frac{\varphi(y)}{|\nabla g(y)|}\,d\sigma_r(y).
+\end{aligned}
 \]
 Hence \(\delta(g-r)\) is the distribution supported on \(g^{-1}(r)\) whose density relative to the induced hypersurface measure is \(1/|\nabla g|\).

@@ -35,7 +35,24 @@ K_r(x,y)
 =
 \chi(x,y)|\nabla_y\Phi(x,y)|\,\delta\bigl(\Phi(x,y)-r\bigr).
 \]
-Using the Fourier representation of the delta distribution, this becomes
+The Dirac delta distribution has the Fourier representation
+\[
+\delta(s)
+=
+\frac1{2\pi}
+\int_{\mathbb R}e^{i\tau s}\,d\tau
+\qquad\text{in }\mathcal S'(\mathbb R).
+\]
+The substitution \(s=\Phi(x,y)-r\) gives
+\[
+\delta\bigl(\Phi(x,y)-r\bigr)
+=
+\frac1{2\pi}
+\int_{\mathbb R}e^{i\tau(\Phi(x,y)-r)}\,d\tau
+\qquad\text{in }\mathcal D'(U\times V)
+\]
+([justification](./pullback_of_dirac_fourier_representation.md "why")).
+The kernel therefore becomes
 \[
 K_r(x,y)
 =
@@ -44,8 +61,13 @@ K_r(x,y)
 e^{i\tau(\Phi(x,y)-r)}
 \chi(x,y)|\nabla_y\Phi(x,y)|\,d\tau.
 \]
-The phase \(\tau(\Phi-r)\) parametrizes \(C_r\).
-Since the amplitude has order \(0\), there is one frequency variable, and both base spaces have dimension \(n\), the operator \(T_r^\chi\) is a Fourier integral operator of order
+Note that:
+
+- The amplitude \(\chi(x,y)|\nabla_y\Phi(x,y)|\) is a symbol of order \(0\).
+- The phase has the single frequency variable \(\tau\).
+- \(\dim U=\dim V=n\).
+
+Therefore, \(T_r^\chi\) is a [Fourier integral operator](./fourier_integral_operator.md "why") of order
 \[
 \mu
 =
@@ -53,7 +75,7 @@ Since the amplitude has order \(0\), there is one frequency variable, and both b
 =
 -\frac{n-1}{2}.
 \]
-The Sobolev mapping theorem for Fourier integral operators associated with local canonical graphs therefore gives
+The phase \(\tau(\Phi-r)\) parametrizes \(C_r\), which is locally a canonical graph on \(\operatorname{spt}\chi\) by assumption, so the [Sobolev mapping property for Fourier integral operators](./sobolev_mapping_for_fourier_integral_operators.md "why") gives
 \[
 T_r^\chi:H^s(V)
 \longrightarrow
@@ -61,12 +83,9 @@ H^{s-\mu}(U)
 =
 H^{s+(n-1)/2}(U).
 \]
-For \(r\in I\), only the compact set
-\[
-\{(x,y)\in\operatorname{spt}\chi:\Phi(x,y)\in I\}
-\]
-is relevant.
-A finite cover by canonical-graph coordinate patches makes the preceding estimate uniform in \(r\in I\), which gives \((\mathrm{SM})\). \(\square\)
+Because \(C_r\) is only locally a canonical graph, decompose \(\chi\) into finitely many pieces, each supported in a single canonical-graph patch.
+Compactness of \(\operatorname{spt}\chi\) keeps the graph Jacobians uniformly away from \(0\) and uniformly controls the required phase and amplitude seminorms across these patches.
+Since \(r\) only contributes \(-\tau r\) to the phase and \(T_r^\chi=0\) outside the compact set \(\Phi(\operatorname{spt}\chi)\), the patchwise constants are uniform in \(r\); summing the finitely many pieces gives \((\mathrm{SM})\). \(\square\)
 
 ## Application here
 

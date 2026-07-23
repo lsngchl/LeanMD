@@ -49,3 +49,31 @@ Equivalently,
 \frac{h(y)}{|\nabla g(y)|}\,d\sigma_r(y).
 \]
 The factor \(|\nabla g|\) compensates for how rapidly the value of \(g\) changes in the direction normal to its level sets.
+
+## Application here
+
+For fixed \(x\in U\), set
+\[
+g_x(y):=\Phi(x,y),
+\qquad
+h_x(y):=f(y)\chi(x,y).
+\]
+Then \(\nabla g_x(y)=\nabla_y\Phi(x,y)\), so the coarea identity gives
+\[
+\begin{aligned}
+T_r^\chi f(x)
+&=
+\int_{\{y\in V:\Phi(x,y)=r\}}
+f(y)\chi(x,y)\,d\sigma_{x,r}(y)\\
+&=
+\int_V
+f(y)\chi(x,y)|\nabla_y\Phi(x,y)|
+\delta\bigl(\Phi(x,y)-r\bigr)\,dy.
+\end{aligned}
+\]
+Since \(T_r^\chi f(x)=\int_V K_r(x,y)f(y)\,dy\), its Schwartz kernel is
+\[
+K_r(x,y)
+=
+\chi(x,y)|\nabla_y\Phi(x,y)|\,\delta\bigl(\Phi(x,y)-r\bigr).
+\]
