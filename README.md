@@ -1,6 +1,6 @@
 # LeanMD Viewer
 
-**Latest release: 1.4.1**
+**Latest release: 1.4.2**
 
 A small, local-first Markdown viewer that renders LaTeX written with either
 `\(...\)` and `\[...\]` or `$...$` and `$$...$$`.
@@ -31,7 +31,8 @@ installer display version are kept in sync with the latest release shown above.
 - Recursive map layout that keeps sibling subtrees ordered as branches grow
 - Map branches ordered by their source links rather than discovery order
 - Drag-to-pan map navigation with slider, button, fit, and wheel zoom controls
-- Inferred `?` nodes on the shortest structural route to newly opened documents
+- Full structured maps from the start, with unexplored documents shown as `?` nodes
+- Shared DAG branches unfolded into duplicate, state-synchronized tree nodes
 - Persistent exploration maps for structured LeanMD document sets
 - Per-document unresolved toggles with composable map badges
 - External-link icons for web references that open in the system browser
@@ -66,14 +67,17 @@ and selected passage are written to the ignored
 Markdown files outside a structured document set are still viewed and
 automatically reloaded without creating this context file.
 
-The primary viewer window saves its partial structural projection as the ignored
-`.leanmd/exploration-map.json` file. Opening an unseen document reveals the
-shortest route from an already visible ancestor; unopened intermediate documents
-appear as `?` nodes until opened. Sibling documents remain sibling branches under
-their structural parent. The viewer watches `dependencies.json`, keeps existing
-valid display paths stable, and repairs paths invalidated by dependency changes.
-Resetting retains only the current document plus its inferred route from the
-structure root. Independent recall windows keep temporary maps.
+The primary viewer window shows the complete structure immediately and saves
+exploration progress in the ignored `.leanmd/exploration-map.json` file.
+Unexplored documents appear as `?` nodes and reveal their names and paths after
+they are opened. Sibling documents remain sibling branches under their structural
+parent. When multiple parents share a child, the map unfolds that child and its
+descendants under every parent. Those visual occurrences still represent one
+document, so opening any occurrence updates all of them together. The viewer
+watches `dependencies.json` and refreshes the full map when dependencies change.
+Resetting clears exploration progress except for the current document while
+keeping the entire structure visible. Independent recall windows keep temporary
+maps.
 
 An adjacent `<document>.unresolved` marker records that a document is not yet
 understood. The desktop viewer creates or removes this marker from the document

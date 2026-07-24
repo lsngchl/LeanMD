@@ -588,7 +588,6 @@ internal sealed class MainForm : Form
         }
 
         ReconcileStructuredMap(structure);
-        RevealStructuredPath(structure, markdownPath);
         MarkMapNodeVisited(markdownPath);
         SetPreviousMapNode(previousPath, markdownPath);
         PersistMapState();
@@ -612,14 +611,8 @@ internal sealed class MainForm : Form
             : null;
         if (restored is not null && PathsEqual(restored.RootPath, structure.RootPath))
         {
-            _mapNodes.AddRange(restored.Nodes);
-            _mapEdges.AddRange(restored.Edges);
             _mapVisitedNodes.AddRange(restored.VisitedNodes);
             _mapDependenciesFingerprint = restored.DependenciesFingerprint;
-        }
-        else
-        {
-            _mapNodes.Add(structure.RootPath);
         }
     }
 
@@ -633,112 +626,20 @@ internal sealed class MainForm : Form
         if (_mapRootPath is null || !PathsEqual(_mapRootPath, structure.RootPath))
         {
             _mapSessionId++;
-            _mapRootPath = structure.RootPath;
-            _mapNodes.Clear();
-            _mapNodes.Add(structure.RootPath);
-            _mapEdges.Clear();
-            _mapVisitedNodes.Clear();
-            foreach (string path in visited)
-            {
-                RevealStructuredPath(structure, path);
-                MarkMapNodeVisited(path);
-            }
-            _mapDependenciesFingerprint = structure.Fingerprint;
-            return;
         }
 
-        var candidateNodes = new HashSet<string>(
-            _mapNodes.Where(structure.ContainsDocument),
-            StringComparer.OrdinalIgnoreCase)
-        {
-            structure.RootPath,
-        };
-        List<ExplorationMapEdge> candidateEdges = _mapEdges
-            .Where(edge =>
-                candidateNodes.Contains(edge.From) &&
-                candidateNodes.Contains(edge.To) &&
-                structure.ContainsEdge(edge))
-            .Distinct()
-            .ToList();
-
-        var reachable = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            structure.RootPath,
-        };
-        bool added;
-        do
-        {
-            added = false;
-            foreach (ExplorationMapEdge edge in candidateEdges)
-            {
-                if (reachable.Contains(edge.From) && reachable.Add(edge.To)) added = true;
-            }
-        }
-        while (added);
-
-        var required = new HashSet<string>(
-            visited.Where(reachable.Contains),
-            StringComparer.OrdinalIgnoreCase)
-        {
-            structure.RootPath,
-        };
-        do
-        {
-            added = false;
-            foreach (ExplorationMapEdge edge in candidateEdges)
-            {
-                if (required.Contains(edge.To) && required.Add(edge.From)) added = true;
-            }
-        }
-        while (added);
-
-        _mapNodes.RemoveAll(path => !required.Contains(path));
-        if (!_mapNodes.Contains(structure.RootPath, StringComparer.OrdinalIgnoreCase))
-        {
-            _mapNodes.Insert(0, structure.RootPath);
-        }
+        _mapRootPath = structure.RootPath;
         _mapEdges.Clear();
-        _mapEdges.AddRange(candidateEdges.Where(edge =>
-            required.Contains(edge.From) && required.Contains(edge.To)));
+        _mapEdges.AddRange(structure.Edges);
+        _mapNodes.Clear();
+        _mapNodes.AddRange(structure.Documents
+            .OrderBy(structure.GetDocumentOrder)
+            .ThenBy(path => path, StringComparer.OrdinalIgnoreCase));
         _mapVisitedNodes.Clear();
-        _mapVisitedNodes.AddRange(visited.Where(required.Contains));
-
-        foreach (string path in visited.Where(path => !required.Contains(path)))
-        {
-            RevealStructuredPath(structure, path);
-            MarkMapNodeVisited(path);
-        }
+        _mapVisitedNodes.AddRange(visited);
 
         _mapMetadataDirectory = structure.MetadataDirectory;
         _mapDependenciesFingerprint = structure.Fingerprint;
-    }
-
-    private void RevealStructuredPath(LeanMdStructure structure, string targetPath)
-    {
-        IReadOnlyList<string>? connector = structure.FindShortestConnectorPath(
-            _mapNodes,
-            targetPath);
-        if (connector is null) return;
-
-        foreach (string path in connector)
-        {
-            if (!_mapNodes.Contains(path, StringComparer.OrdinalIgnoreCase))
-            {
-                _mapNodes.Add(path);
-            }
-        }
-        for (int index = 1; index < connector.Count; index++)
-        {
-            var edge = new ExplorationMapEdge(
-                connector[index - 1],
-                connector[index],
-                structure.GetEdgeOrder(connector[index - 1], connector[index]));
-            if (!_mapEdges.Any(existing =>
-                PathsEqual(existing.From, edge.From) && PathsEqual(existing.To, edge.To)))
-            {
-                _mapEdges.Add(edge);
-            }
-        }
     }
 
     private void MarkMapNodeVisited(string path)
@@ -761,10 +662,9 @@ internal sealed class MainForm : Form
             _previousMapPath = null;
             _documentHistory.Clear();
             _mapNodes.Clear();
-            _mapNodes.Add(structure.RootPath);
             _mapEdges.Clear();
             _mapVisitedNodes.Clear();
-            RevealStructuredPath(structure, currentPath);
+            ReconcileStructuredMap(structure);
             MarkMapNodeVisited(currentPath);
             PersistMapState();
             PublishMapState();
@@ -978,13 +878,13 @@ internal sealed class MainForm : Form
                     ? "?"
                     : Path.GetFileNameWithoutExtension(path).Replace('_', ' '),
                 detail = isStructuredMap && !visited.Contains(path)
-                    ? "Unopened structure node"
+                    ? "Unexplored structure node"
                     : path.Equals(_mapRootPath, StringComparison.OrdinalIgnoreCase)
                     ? isStructuredMap ? "Structure root" : "Starting document"
                     : rootDirectory is null
                         ? Path.GetFileName(path)
                         : Path.GetRelativePath(rootDirectory, path).Replace('\\', '/'),
-                inferred = isStructuredMap && !visited.Contains(path),
+                unexplored = isStructuredMap && !visited.Contains(path),
                 unresolved = UnresolvedStateStore.IsUnresolved(path),
                 order = isStructuredMap && _leanMdStructure is not null
                     ? _leanMdStructure.GetDocumentOrder(path)
@@ -1367,7 +1267,6 @@ internal sealed class MainForm : Form
         ReconcileStructuredMap(structure);
         if (_markdownPath is not null && structure.ContainsDocument(_markdownPath))
         {
-            RevealStructuredPath(structure, _markdownPath);
             MarkMapNodeVisited(_markdownPath);
         }
         PersistMapState();

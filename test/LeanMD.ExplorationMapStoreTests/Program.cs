@@ -65,19 +65,16 @@ try
 
     LeanMdStructure? structure = LeanMdStructure.Load(metadata);
     Assert(structure is not null, "A valid dependencies manifest should load.");
-    Assert(PathsMatch(
-            structure!.FindShortestConnectorPath([rootDocument, branchA], branchB),
-            rootDocument,
-            branchB),
-        "Opening sibling B after A should add root -> B, never A -> B.");
-    Assert(PathsMatch(
-            structure.FindShortestConnectorPath(
-                [rootDocument, branchA, branchB],
-                deepTarget),
-            branchA,
-            intermediate,
-            deepTarget),
-        "A deep target should reveal the shortest route from its nearest revealed ancestor.");
+    Assert(structure!.Documents.Count == 5 &&
+        structure.Documents.Contains(rootDocument) &&
+        structure.Documents.Contains(deepTarget),
+        "The structure should expose every document for the complete exploration map.");
+    Assert(structure.Edges.Count == 4 &&
+        structure.Edges.Any(edge =>
+            PathsEqual(edge.From, rootDocument) && PathsEqual(edge.To, branchB)) &&
+        structure.Edges.Any(edge =>
+            PathsEqual(edge.From, intermediate) && PathsEqual(edge.To, deepTarget)),
+        "The structure should expose every dependency edge for the complete exploration map.");
     Assert(structure.GetEdgeOrder(rootDocument, branchA) == 0 &&
         structure.GetEdgeOrder(rootDocument, branchB) == 1,
         "Structure edges should retain their source-link order.");
@@ -120,13 +117,11 @@ try
     Assert(flatStructure is not null &&
         flatStructure.ContainsDocument(flatRoot) &&
         flatStructure.ContainsDocument(flatBranch) &&
-        flatStructure.ContainsDocument(flatShared),
+        flatStructure.ContainsDocument(flatShared) &&
+        flatStructure.Edges.Count == 3 &&
+        flatStructure.Edges.Any(edge =>
+            PathsEqual(edge.From, flatRoot) && PathsEqual(edge.To, flatShared)),
         "The desktop structure loader should accept a versioned flat workspace.");
-    Assert(PathsMatch(
-            flatStructure!.FindShortestConnectorPath([flatRoot], flatShared),
-            flatRoot,
-            flatShared),
-        "The desktop structure loader should navigate flat v2 nodes by manifest edges.");
 
     var mapState = new ExplorationMapState(
         rootDocument,
@@ -152,11 +147,11 @@ try
     ExplorationMapState? loaded = ExplorationMapStore.Load(metadata);
     Assert(loaded is not null, "The document set should restore the saved map.");
     Assert(loaded!.Nodes.Count == 5 && loaded.Edges.Count == 4,
-        "The restored map should preserve its partial structural projection.");
+        "The restored map should preserve the complete structural projection.");
     Assert(loaded.VisitedNodes.Count == 3 &&
         loaded.VisitedNodes.Any(path => PathsEqual(path, branchB)) &&
         !loaded.VisitedNodes.Any(path => PathsEqual(path, intermediate)),
-        "Visited and inferred nodes must remain distinguishable after restore.");
+        "Visited and unexplored nodes must remain distinguishable after restore.");
     Assert(loaded.DependenciesFingerprint == structure.Fingerprint,
         "The manifest fingerprint should be persisted with the projection.");
 
@@ -181,17 +176,14 @@ try
     Assert(changedStructure is not null &&
         changedStructure.Fingerprint != structure.Fingerprint,
         "Changing dependencies should produce a new structure fingerprint.");
-    Assert(PathsMatch(
-            changedStructure!.FindShortestConnectorPath(
-                [
-                    Path.Combine(relocatedWorkspace, "root.md"),
-                    Path.Combine(relocatedWorkspace, "a", "a.md"),
-                ],
-                Path.Combine(relocatedWorkspace, "b", "b.md")),
-            Path.Combine(relocatedWorkspace, "a", "a.md"),
-            inserted,
-            Path.Combine(relocatedWorkspace, "b", "b.md")),
-        "An inserted dependency should be exposed as a new inferred intermediate node.");
+    Assert(changedStructure!.Documents.Contains(inserted) &&
+        changedStructure.Edges.Any(edge =>
+            PathsEqual(edge.From, Path.Combine(relocatedWorkspace, "a", "a.md")) &&
+            PathsEqual(edge.To, inserted)) &&
+        changedStructure.Edges.Any(edge =>
+            PathsEqual(edge.From, inserted) &&
+            PathsEqual(edge.To, Path.Combine(relocatedWorkspace, "b", "b.md"))),
+        "An inserted dependency should appear immediately in the complete structure.");
 
     File.WriteAllText(statePath = Path.Combine(
         relocatedMetadata,
@@ -286,13 +278,6 @@ static string WriteDocument(string root, string relativePath)
     Directory.CreateDirectory(Path.GetDirectoryName(path)!);
     File.WriteAllText(path, $"# {Path.GetFileNameWithoutExtension(path)}\n");
     return path;
-}
-
-static bool PathsMatch(IReadOnlyList<string>? actual, params string[] expected)
-{
-    return actual is not null &&
-        actual.Count == expected.Length &&
-        actual.Zip(expected).All(pair => PathsEqual(pair.First, pair.Second));
 }
 
 static bool PathsEqual(string left, string right)

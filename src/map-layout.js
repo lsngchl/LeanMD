@@ -9,6 +9,8 @@ const DEFAULT_LAYOUT = Object.freeze({
   minimumHeight: 620,
 });
 
+const DEFAULT_MAXIMUM_UNFOLDED_NODES = 50_000;
+
 function normalizedOptions(options) {
   return { ...DEFAULT_LAYOUT, ...options };
 }
@@ -19,6 +21,129 @@ function nodeOrder(node, fallback) {
 
 function edgeOrder(edge, fallback) {
   return Number.isFinite(edge?.order) ? edge.order : fallback;
+}
+
+export function unfoldExplorationMap(nodes, edges, root, options = {}) {
+  const maximumNodeCount =
+    Number.isInteger(options.maximumNodeCount) && options.maximumNodeCount > 0
+      ? options.maximumNodeCount
+      : DEFAULT_MAXIMUM_UNFOLDED_NODES;
+  const orderedDocuments = [];
+  const documentById = new Map();
+
+  for (const [index, node] of nodes.entries()) {
+    if (!node || typeof node.id !== "string" || documentById.has(node.id)) continue;
+    const normalized = { ...node, order: nodeOrder(node, index) };
+    orderedDocuments.push(normalized);
+    documentById.set(normalized.id, normalized);
+  }
+
+  orderedDocuments.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+  if (orderedDocuments.length === 0) {
+    return { nodes: [], edges: [], root: null, truncated: false };
+  }
+
+  const outgoing = new Map(orderedDocuments.map((node) => [node.id, []]));
+  for (const [index, edge] of edges.entries()) {
+    if (!documentById.has(edge?.from) || !documentById.has(edge?.to)) continue;
+    outgoing.get(edge.from).push({
+      edge,
+      order: edgeOrder(edge, index),
+      targetOrder: documentById.get(edge.to).order,
+    });
+  }
+  for (const sourceEdges of outgoing.values()) {
+    sourceEdges.sort(
+      (a, b) =>
+        a.order - b.order ||
+        a.targetOrder - b.targetOrder ||
+        a.edge.to.localeCompare(b.edge.to),
+    );
+  }
+
+  const unfoldedNodes = [];
+  const unfoldedEdges = [];
+  const representedDocuments = new Set();
+  let unfoldedRoot = null;
+  let truncated = false;
+
+  function createOccurrence(documentId) {
+    if (unfoldedNodes.length >= maximumNodeCount) {
+      truncated = true;
+      return null;
+    }
+
+    const documentNode = documentById.get(documentId);
+    const occurrenceId = `map-occurrence-${unfoldedNodes.length}`;
+    unfoldedNodes.push({
+      ...documentNode,
+      id: occurrenceId,
+      documentId,
+    });
+    representedDocuments.add(documentId);
+    return occurrenceId;
+  }
+
+  function expandComponent(startDocumentId) {
+    const startOccurrenceId = createOccurrence(startDocumentId);
+    if (startOccurrenceId === null) return null;
+
+    const stack = [
+      {
+        documentId: startDocumentId,
+        occurrenceId: startOccurrenceId,
+        ancestors: new Set([startDocumentId]),
+      },
+    ];
+
+    while (stack.length > 0 && !truncated) {
+      const current = stack.pop();
+      const childFrames = [];
+      for (const sourceEdge of outgoing.get(current.documentId)) {
+        const childDocumentId = sourceEdge.edge.to;
+        if (current.ancestors.has(childDocumentId)) continue;
+
+        const childOccurrenceId = createOccurrence(childDocumentId);
+        if (childOccurrenceId === null) break;
+
+        unfoldedEdges.push({
+          ...sourceEdge.edge,
+          from: current.occurrenceId,
+          to: childOccurrenceId,
+          order: sourceEdge.order,
+        });
+        const ancestors = new Set(current.ancestors);
+        ancestors.add(childDocumentId);
+        childFrames.push({
+          documentId: childDocumentId,
+          occurrenceId: childOccurrenceId,
+          ancestors,
+        });
+      }
+
+      for (let index = childFrames.length - 1; index >= 0; index -= 1) {
+        stack.push(childFrames[index]);
+      }
+    }
+
+    return startOccurrenceId;
+  }
+
+  const preferredRoot = documentById.has(root) ? root : orderedDocuments[0].id;
+  unfoldedRoot = expandComponent(preferredRoot);
+  for (const documentNode of orderedDocuments) {
+    if (truncated) break;
+    if (!representedDocuments.has(documentNode.id)) {
+      expandComponent(documentNode.id);
+    }
+  }
+
+  return {
+    nodes: unfoldedNodes,
+    edges: unfoldedEdges,
+    root: unfoldedRoot,
+    truncated,
+  };
 }
 
 export function layoutExplorationMap(nodes, edges, root, options = {}) {
@@ -230,7 +355,6 @@ export function routeExplorationMapEdges(edges, layout, options = {}) {
 
     return {
       edge,
-      primary: layout.primaryParents.get(edge.to) === edge.from,
       sourceY,
       targetY,
       path: `M ${sourceX} ${sourceY} C ${firstControlX} ${sourceY}, ${secondControlX} ${targetY}, ${targetX} ${targetY}`,

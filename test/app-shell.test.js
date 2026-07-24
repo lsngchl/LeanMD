@@ -145,21 +145,29 @@ test("records live context only for structured LeanMD documents", () => {
   assert.match(appSource, /currentSelectionFocus\(\)/);
 });
 
-test("projects revealed LeanMD structure into the exploration map", () => {
+test("projects the complete LeanMD structure into the exploration map", () => {
   assert.match(html, /id="mapButton"/);
   assert.match(html, /id="mapOverlay"/);
-  assert.match(html, /Question marks connect opened documents/);
+  assert.match(html, /Unexplored documents appear as question marks/);
   assert.match(desktopHost, /UpdateStructuredMapAfterOpen\(markdownPath, previousPath\)/);
-  assert.match(desktopHost, /FindShortestConnectorPath\(\s*_mapNodes/);
-  assert.match(leanMdStructure, /var pending = new Queue<string>\(\)/);
-  assert.match(leanMdStructure, /_parents\.TryGetValue\(current/);
+  assert.match(leanMdStructure, /IReadOnlyCollection<string> Documents => _documents/);
+  assert.match(desktopHost, /_mapNodes\.AddRange\(structure\.Documents/);
+  assert.match(desktopHost, /_mapEdges\.AddRange\(structure\.Edges\)/);
+  assert.doesNotMatch(desktopHost, /RevealStructuredPath/);
   assert.match(desktopHost, /type = "map-state"/);
-  assert.match(desktopHost, /inferred = isStructuredMap && !visited\.Contains\(path\)/);
+  assert.match(desktopHost, /unexplored = isStructuredMap && !visited\.Contains\(path\)/);
   assert.match(appSource, /function renderMap\(\)/);
-  assert.match(appSource, /button\.classList\.toggle\("is-inferred", isInferred\)/);
-  assert.match(stylesSource, /\.map-node\.is-inferred\s*{/);
-  assert.match(appSource, /type: "open-map-node",[\s\S]*id: node\.id,[\s\S]*position:/);
-  assert.match(appSource, /layoutExplorationMap\(mapState\.nodes/);
+  assert.match(appSource, /unfoldExplorationMap\(\s*mapState\.nodes/);
+  assert.match(appSource, /const count = mapState\.nodes\.length/);
+  assert.match(appSource, /const isCurrent = documentId === mapState\.current/);
+  assert.match(appSource, /const isPrevious = documentId === mapState\.previous/);
+  assert.match(appSource, /button\.classList\.toggle\("is-unexplored", isUnexplored\)/);
+  assert.match(stylesSource, /\.map-node\.is-unexplored\s*{/);
+  assert.match(appSource, /const documentId = node\.documentId/);
+  assert.match(appSource, /type: "open-map-node",[\s\S]*id: documentId,[\s\S]*position:/);
+  assert.match(appSource, /layoutExplorationMap\(\s*unfoldedMap\.nodes/);
+  assert.doesNotMatch(appSource, /is-secondary/);
+  assert.doesNotMatch(stylesSource, /stroke-dasharray/);
   assert.doesNotMatch(appSource, /isMapPositionFree|mapPositions\.has/);
 });
 
@@ -195,7 +203,8 @@ test("watches and reconciles dependency manifest changes", () => {
   assert.match(desktopHost, /new FileSystemWatcher\(metadataDirectory, "dependencies\.json"\)/);
   assert.match(desktopHost, /LeanMdStructureReloadDebounceMilliseconds = 250/);
   assert.match(desktopHost, /ReconcileStructuredMap\(structure\)/);
-  assert.match(desktopHost, /structure\.ContainsEdge\(edge\)/);
+  assert.match(desktopHost, /_mapNodes\.AddRange\(structure\.Documents/);
+  assert.match(desktopHost, /_mapEdges\.AddRange\(structure\.Edges\)/);
   assert.match(desktopHost, /_mapDependenciesFingerprint = structure\.Fingerprint/);
 });
 
@@ -241,7 +250,7 @@ test("marks the immediately previous document on the map", () => {
   );
 });
 
-test("composes unresolved map badges with previous and inferred states", () => {
+test("composes unresolved map badges with previous and unexplored states", () => {
   assert.match(desktopHost, /unresolved = UnresolvedStateStore\.IsUnresolved\(path\)/);
   assert.match(appSource, /button\.classList\.toggle\("is-unresolved", isUnresolved\)/);
   assert.match(stylesSource, /\.map-node\.is-unresolved::before\s*{/);
@@ -267,7 +276,7 @@ test("separates map reset from close and confirms before clearing the map", () =
   assert.ok(closePosition >= 0 && closePosition < footerPosition);
   assert.ok(resetPosition > footerPosition);
   assert.match(html, /id="mapResetDialog"/);
-  assert.match(html, /shortest path from the structure root will remain/);
+  assert.match(html, /The full\s+structure will remain visible/);
   assert.match(appSource, /mapResetDialog\.showModal\(\)/);
   assert.match(
     appSource,

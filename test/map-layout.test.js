@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   layoutExplorationMap,
   routeExplorationMapEdges,
+  unfoldExplorationMap,
 } from "../src/map-layout.js";
 
 const options = {
@@ -20,6 +21,49 @@ function node(id, order) {
 function edge(from, to, order) {
   return Number.isFinite(order) ? { from, to, order } : { from, to };
 }
+
+test("unfolds shared DAG descendants into synchronized document occurrences", () => {
+  const nodes = [
+    node("root", 0),
+    node("A", 1),
+    node("B", 2),
+    { ...node("C", 3), label: "?", unexplored: true },
+    node("D", 4),
+  ];
+  const edges = [
+    edge("root", "A", 0),
+    edge("root", "B", 1),
+    edge("A", "C", 0),
+    edge("B", "C", 0),
+    edge("C", "D", 0),
+  ];
+  const unfolded = unfoldExplorationMap(nodes, edges, "root");
+
+  assert.equal(unfolded.nodes.length, 7);
+  assert.equal(unfolded.edges.length, 6);
+  assert.equal(
+    unfolded.nodes.filter((occurrence) => occurrence.documentId === "C").length,
+    2,
+  );
+  assert.equal(
+    unfolded.nodes.filter((occurrence) => occurrence.documentId === "D").length,
+    2,
+  );
+  assert.ok(
+    unfolded.nodes
+      .filter((occurrence) => occurrence.documentId === "C")
+      .every((occurrence) => occurrence.label === "?" && occurrence.unexplored),
+  );
+
+  const incomingCounts = new Map();
+  for (const unfoldedEdge of unfolded.edges) {
+    incomingCounts.set(
+      unfoldedEdge.to,
+      (incomingCounts.get(unfoldedEdge.to) ?? 0) + 1,
+    );
+  }
+  assert.ok([...incomingCounts.values()].every((count) => count === 1));
+});
 
 test("uses source-link order instead of discovery order for siblings", () => {
   const nodes = [node("root", 0), node("lower", 1), node("upper", 2)];

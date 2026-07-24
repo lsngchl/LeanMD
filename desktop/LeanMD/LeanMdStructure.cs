@@ -9,11 +9,8 @@ internal readonly record struct ExplorationMapEdge(string From, string To, int O
 internal sealed class LeanMdStructure
 {
     private readonly HashSet<string> _documents;
-    private readonly HashSet<string> _edgeKeys;
     private readonly Dictionary<string, int> _edgeOrders;
     private readonly Dictionary<string, int> _documentOrders;
-    private readonly Dictionary<string, List<string>> _parents;
-    private readonly Dictionary<string, List<string>> _children;
 
     private LeanMdStructure(
         string metadataDirectory,
@@ -22,11 +19,8 @@ internal sealed class LeanMdStructure
         string fingerprint,
         IReadOnlyList<ExplorationMapEdge> edges,
         HashSet<string> documents,
-        HashSet<string> edgeKeys,
         Dictionary<string, int> edgeOrders,
-        Dictionary<string, int> documentOrders,
-        Dictionary<string, List<string>> parents,
-        Dictionary<string, List<string>> children)
+        Dictionary<string, int> documentOrders)
     {
         MetadataDirectory = metadataDirectory;
         WorkspaceRoot = workspaceRoot;
@@ -34,17 +28,15 @@ internal sealed class LeanMdStructure
         Fingerprint = fingerprint;
         Edges = edges;
         _documents = documents;
-        _edgeKeys = edgeKeys;
         _edgeOrders = edgeOrders;
         _documentOrders = documentOrders;
-        _parents = parents;
-        _children = children;
     }
 
     public string MetadataDirectory { get; }
     public string WorkspaceRoot { get; }
     public string RootPath { get; }
     public string Fingerprint { get; }
+    public IReadOnlyCollection<string> Documents => _documents;
     public IReadOnlyList<ExplorationMapEdge> Edges { get; }
 
     public static LeanMdStructure? Load(string metadataDirectory)
@@ -77,7 +69,6 @@ internal sealed class LeanMdStructure
             var edgeKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var edgeOrders = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             var edges = new List<ExplorationMapEdge>();
-            var parents = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
             var children = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
 
             foreach (JsonElement edgeElement in edgesElement.EnumerateArray())
@@ -125,7 +116,6 @@ internal sealed class LeanMdStructure
                 edgeOrders.Add(key, order);
                 edges.Add(new ExplorationMapEdge(from, to, order));
                 AddToLookup(children, from, to);
-                AddToLookup(parents, to, from);
             }
 
             var reachable = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -177,11 +167,8 @@ internal sealed class LeanMdStructure
                 fingerprint,
                 edges,
                 documents,
-                edgeKeys,
                 edgeOrders,
-                documentOrders,
-                parents,
-                children);
+                documentOrders);
         }
         catch
         {
@@ -193,11 +180,6 @@ internal sealed class LeanMdStructure
     public bool ContainsDocument(string documentPath)
     {
         return _documents.Contains(Path.GetFullPath(documentPath));
-    }
-
-    public bool ContainsEdge(ExplorationMapEdge edge)
-    {
-        return _edgeKeys.Contains(EdgeKey(edge.From, edge.To));
     }
 
     public int GetEdgeOrder(string from, string to)
@@ -212,52 +194,6 @@ internal sealed class LeanMdStructure
         return _documentOrders.TryGetValue(Path.GetFullPath(documentPath), out int order)
             ? order
             : int.MaxValue;
-    }
-
-    public IReadOnlyList<string>? FindShortestConnectorPath(
-        IEnumerable<string> revealedDocuments,
-        string targetPath)
-    {
-        targetPath = Path.GetFullPath(targetPath);
-        if (!_documents.Contains(targetPath)) return null;
-
-        var revealed = new HashSet<string>(
-            revealedDocuments.Select(Path.GetFullPath),
-            StringComparer.OrdinalIgnoreCase);
-        if (revealed.Contains(targetPath)) return [targetPath];
-
-        var pending = new Queue<string>();
-        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            targetPath,
-        };
-        var nextTowardTarget = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        pending.Enqueue(targetPath);
-
-        while (pending.Count > 0)
-        {
-            string current = pending.Dequeue();
-            if (revealed.Contains(current))
-            {
-                var path = new List<string> { current };
-                while (nextTowardTarget.TryGetValue(current, out string? next))
-                {
-                    path.Add(next);
-                    current = next;
-                }
-                return path;
-            }
-
-            if (!_parents.TryGetValue(current, out List<string>? parentPaths)) continue;
-            foreach (string parent in parentPaths)
-            {
-                if (!visited.Add(parent)) continue;
-                nextTowardTarget.Add(parent, current);
-                pending.Enqueue(parent);
-            }
-        }
-
-        return null;
     }
 
     internal static string? ResolveDocumentPath(string workspaceRoot, string? relativePath)

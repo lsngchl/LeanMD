@@ -3,6 +3,7 @@ import "katex/dist/katex.min.css";
 import {
   layoutExplorationMap,
   routeExplorationMapEdges,
+  unfoldExplorationMap,
 } from "./map-layout.js";
 
 const elements = {
@@ -383,12 +384,22 @@ function setMapState(nextState) {
 }
 
 function renderMap() {
-  const layout = layoutExplorationMap(mapState.nodes, mapState.edges, mapState.root, {
-    nodeWidth: MAP_NODE_WIDTH,
-    nodeHeight: MAP_NODE_HEIGHT,
-    horizontalStep: MAP_HORIZONTAL_STEP,
-    verticalStep: MAP_VERTICAL_STEP,
-  });
+  const unfoldedMap = unfoldExplorationMap(
+    mapState.nodes,
+    mapState.edges,
+    mapState.root,
+  );
+  const layout = layoutExplorationMap(
+    unfoldedMap.nodes,
+    unfoldedMap.edges,
+    unfoldedMap.root,
+    {
+      nodeWidth: MAP_NODE_WIDTH,
+      nodeHeight: MAP_NODE_HEIGHT,
+      horizontalStep: MAP_HORIZONTAL_STEP,
+      verticalStep: MAP_VERTICAL_STEP,
+    },
+  );
   renderedMapLayout = layout;
   elements.mapNodeLayer.replaceChildren();
   elements.mapEdgeLayer.replaceChildren();
@@ -399,7 +410,7 @@ function renderMap() {
   elements.mapEdges.setAttribute("height", String(layout.height));
   elements.mapEdges.setAttribute("viewBox", `0 0 ${layout.width} ${layout.height}`);
 
-  const routes = routeExplorationMapEdges(mapState.edges, layout, {
+  const routes = routeExplorationMapEdges(unfoldedMap.edges, layout, {
     nodeWidth: MAP_NODE_WIDTH,
     nodeHeight: MAP_NODE_HEIGHT,
   });
@@ -407,28 +418,28 @@ function renderMap() {
     const path = document.createElementNS(SVG_NAMESPACE, "path");
     path.setAttribute("d", route.path);
     path.setAttribute("marker-end", "url(#mapArrow)");
-    path.classList.toggle("is-secondary", !route.primary);
     elements.mapEdgeLayer.append(path);
   }
 
-  for (const node of [...mapState.nodes].sort((a, b) => a.order - b.order)) {
+  for (const node of [...unfoldedMap.nodes].sort((a, b) => a.order - b.order)) {
     const position = layout.positions.get(node.id);
     if (!position) continue;
 
+    const documentId = node.documentId;
     const button = document.createElement("button");
     button.className = "map-node";
     button.type = "button";
     button.style.transform = `translate(${position.x}px, ${position.y}px)`;
-    const isCurrent = node.id === mapState.current;
-    const isPrevious = node.id === mapState.previous;
-    const isInferred = node.inferred === true;
+    const isCurrent = documentId === mapState.current;
+    const isPrevious = documentId === mapState.previous;
+    const isUnexplored = node.unexplored === true;
     const isUnresolved = node.unresolved === true;
     const stateDescriptions = [];
     if (isCurrent) stateDescriptions.push("Current document.");
     if (isPrevious) stateDescriptions.push("Previous document.");
     if (isUnresolved) stateDescriptions.push("Unresolved document.");
-    if (isInferred) {
-      stateDescriptions.push("Unopened document inferred from the LeanMD structure.");
+    if (isUnexplored) {
+      stateDescriptions.push("Unexplored document in the LeanMD structure.");
     }
     const stateDescription = stateDescriptions.length
       ? `${stateDescriptions.join(" ")} `
@@ -444,10 +455,10 @@ function renderMap() {
       "aria-label",
       `${node.label}. ${stateDescription}${node.detail}`,
     );
-    button.classList.toggle("is-root", node.id === mapState.root);
+    button.classList.toggle("is-root", documentId === mapState.root);
     button.classList.toggle("is-current", isCurrent);
     button.classList.toggle("is-previous", isPrevious);
-    button.classList.toggle("is-inferred", isInferred);
+    button.classList.toggle("is-unexplored", isUnexplored);
     button.classList.toggle("is-unresolved", isUnresolved);
 
     const label = document.createElement("strong");
@@ -461,7 +472,7 @@ function renderMap() {
       closeMap();
       webViewHost.postMessage({
         type: "open-map-node",
-        id: node.id,
+        id: documentId,
         position: currentDocumentPosition(),
       });
     });
