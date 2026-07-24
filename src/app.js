@@ -1,6 +1,7 @@
 import "./styles.css";
 import "katex/dist/katex.min.css";
 import {
+  focusExplorationMap,
   layoutExplorationMap,
   routeExplorationMapEdges,
   unfoldExplorationMap,
@@ -41,20 +42,30 @@ const elements = {
 
 const webViewHost = window.chrome?.webview;
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
-const MAP_NODE_WIDTH = 220;
-const MAP_NODE_HEIGHT = 72;
-const MAP_HORIZONTAL_STEP = 300;
-const MAP_VERTICAL_STEP = 104;
+const MAP_NODE_GEOMETRY = Object.freeze({
+  nodeWidth: 220,
+  nodeHeight: 72,
+  horizontalStep: 300,
+  verticalStep: 104,
+});
 const MAP_MIN_ZOOM = 0.2;
 const MAP_MAX_ZOOM = 2;
 const MAP_ZOOM_STEP = 0.1;
+const MAP_OVERVIEW_ENTER_ZOOM = 0.4;
+const MAP_OVERVIEW_EXIT_ZOOM = 0.48;
 const SOURCE_BLOCK_SELECTOR =
   "[data-source-start-line][data-source-end-line]";
 const VIEWER_CONTEXT_DEBOUNCE_MILLISECONDS = 300;
 let renderGeneration = 0;
 let rendererPromise;
 let renderedMapLayout = null;
+let renderedMapGeometry = MAP_NODE_GEOMETRY;
+let renderedCurrentOccurrenceId = null;
 let mapPanPointer = null;
+let mapOverviewMode = false;
+let mapOverviewForced = false;
+let preferredMapDocumentPath = null;
+let expandedMapOccurrenceKeys = new Set();
 let currentDocumentContextId = null;
 let currentDocumentUnresolved = false;
 let unresolvedRequestPending = false;
@@ -343,6 +354,28 @@ function isRelativeMarkdownLink(href) {
   }
 }
 
+function reconciledPreferredMapPath(nextState) {
+  const current =
+    typeof nextState.current === "string" ? nextState.current : null;
+  if (!current || !Array.isArray(preferredMapDocumentPath)) return null;
+
+  const currentIndex = preferredMapDocumentPath.lastIndexOf(current);
+  if (currentIndex >= 0) {
+    return preferredMapDocumentPath.slice(0, currentIndex + 1);
+  }
+
+  const previous =
+    typeof nextState.previous === "string" ? nextState.previous : null;
+  const lastDocument =
+    preferredMapDocumentPath[preferredMapDocumentPath.length - 1] ?? null;
+  const continuesPath =
+    previous === lastDocument &&
+    nextState.edges.some(
+      (edge) => edge?.from === previous && edge?.to === current,
+    );
+  return continuesPath ? [...preferredMapDocumentPath, current] : null;
+}
+
 function setMapState(nextState) {
   if (!nextState || !Array.isArray(nextState.nodes) || !Array.isArray(nextState.edges)) {
     return;
@@ -356,6 +389,12 @@ function setMapState(nextState) {
       zoom: 1,
       initialized: false,
     };
+    mapOverviewMode = false;
+    mapOverviewForced = false;
+    preferredMapDocumentPath = null;
+    expandedMapOccurrenceKeys = new Set();
+  } else {
+    preferredMapDocumentPath = reconciledPreferredMapPath(nextState);
   }
 
   mapState = {
@@ -389,20 +428,34 @@ function renderMap() {
     mapState.edges,
     mapState.root,
   );
+  const focusedMap = focusExplorationMap(
+    unfoldedMap,
+    mapState.current,
+    preferredMapDocumentPath,
+    expandedMapOccurrenceKeys,
+  );
+  preferredMapDocumentPath = focusedMap.currentDocumentPath;
+  const currentOccurrenceKey = Array.isArray(preferredMapDocumentPath)
+    ? JSON.stringify(preferredMapDocumentPath)
+    : null;
+  const overviewCurrentOccurrence = unfoldedMap.nodes.find(
+    (node) => node.occurrenceKey === currentOccurrenceKey,
+  );
+  const displayedMap = mapOverviewMode ? unfoldedMap : focusedMap;
   const layout = layoutExplorationMap(
-    unfoldedMap.nodes,
-    unfoldedMap.edges,
-    unfoldedMap.root,
-    {
-      nodeWidth: MAP_NODE_WIDTH,
-      nodeHeight: MAP_NODE_HEIGHT,
-      horizontalStep: MAP_HORIZONTAL_STEP,
-      verticalStep: MAP_VERTICAL_STEP,
-    },
+    displayedMap.nodes,
+    displayedMap.edges,
+    displayedMap.root,
+    MAP_NODE_GEOMETRY,
   );
   renderedMapLayout = layout;
+  renderedMapGeometry = MAP_NODE_GEOMETRY;
+  renderedCurrentOccurrenceId = mapOverviewMode
+    ? overviewCurrentOccurrence?.id ?? null
+    : focusedMap.currentOccurrenceId;
   elements.mapNodeLayer.replaceChildren();
   elements.mapEdgeLayer.replaceChildren();
+  elements.mapSurface.classList.toggle("is-overview", mapOverviewMode);
 
   elements.mapSurface.style.width = `${layout.width}px`;
   elements.mapSurface.style.height = `${layout.height}px`;
@@ -410,10 +463,11 @@ function renderMap() {
   elements.mapEdges.setAttribute("height", String(layout.height));
   elements.mapEdges.setAttribute("viewBox", `0 0 ${layout.width} ${layout.height}`);
 
-  const routes = routeExplorationMapEdges(unfoldedMap.edges, layout, {
-    nodeWidth: MAP_NODE_WIDTH,
-    nodeHeight: MAP_NODE_HEIGHT,
-  });
+  const routes = routeExplorationMapEdges(
+    displayedMap.edges,
+    layout,
+    MAP_NODE_GEOMETRY,
+  );
   for (const route of routes) {
     const path = document.createElementNS(SVG_NAMESPACE, "path");
     path.setAttribute("d", route.path);
@@ -421,15 +475,24 @@ function renderMap() {
     elements.mapEdgeLayer.append(path);
   }
 
-  for (const node of [...unfoldedMap.nodes].sort((a, b) => a.order - b.order)) {
+  const displayNodes = [...displayedMap.nodes].sort((a, b) => {
+    const aPosition = layout.positions.get(a.id);
+    const bPosition = layout.positions.get(b.id);
+    return (
+      aPosition.x - bPosition.x ||
+      aPosition.y - bPosition.y ||
+      a.order - b.order
+    );
+  });
+  for (const node of displayNodes) {
     const position = layout.positions.get(node.id);
     if (!position) continue;
 
     const documentId = node.documentId;
+    const isRoot = documentId === mapState.root;
     const button = document.createElement("button");
     button.className = "map-node";
     button.type = "button";
-    button.style.transform = `translate(${position.x}px, ${position.y}px)`;
     const isCurrent = documentId === mapState.current;
     const isPrevious = documentId === mapState.previous;
     const isUnexplored = node.unexplored === true;
@@ -455,20 +518,32 @@ function renderMap() {
       "aria-label",
       `${node.label}. ${stateDescription}${node.detail}`,
     );
-    button.classList.toggle("is-root", documentId === mapState.root);
+    button.classList.toggle("is-root", isRoot);
     button.classList.toggle("is-current", isCurrent);
-    button.classList.toggle("is-previous", isPrevious);
+    button.classList.toggle("is-previous", isPrevious && !mapOverviewMode);
     button.classList.toggle("is-unexplored", isUnexplored);
     button.classList.toggle("is-unresolved", isUnresolved);
 
     const label = document.createElement("strong");
     label.textContent = node.label;
     const detail = document.createElement("span");
+    detail.className = "map-node-detail";
     detail.textContent = node.detail;
-    button.append(label, detail);
+    const glyph = document.createElement("span");
+    glyph.className = "map-node-glyph";
+    glyph.setAttribute("aria-hidden", "true");
+    glyph.textContent = isUnresolved
+      ? "!"
+      : isUnexplored
+        ? "?"
+        : isRoot
+          ? "◆"
+          : "●";
+    button.append(label, detail, glyph);
 
     button.addEventListener("click", () => {
       if (!webViewHost) return;
+      preferredMapDocumentPath = node.documentPath;
       closeMap();
       webViewHost.postMessage({
         type: "open-map-node",
@@ -477,7 +552,42 @@ function renderMap() {
       });
     });
 
-    elements.mapNodeLayer.append(button);
+    const shell = document.createElement("div");
+    shell.className = "map-node-shell";
+    shell.classList.toggle("is-current", isCurrent);
+    shell.dataset.occurrenceKey = node.occurrenceKey;
+    shell.style.transform = `translate(${position.x}px, ${position.y}px)`;
+    shell.append(button);
+
+    if (
+      !mapOverviewMode &&
+      (node.hiddenChildCount > 0 || node.manuallyExpanded)
+    ) {
+      const expandButton = document.createElement("button");
+      expandButton.className = "map-node-expand-button";
+      expandButton.type = "button";
+      expandButton.textContent = node.manuallyExpanded
+        ? "−"
+        : `+${node.hiddenChildCount}`;
+      expandButton.setAttribute(
+        "aria-label",
+        node.manuallyExpanded
+          ? `Collapse ${node.label}`
+          : `Show ${node.hiddenChildCount} hidden children of ${node.label}`,
+      );
+      expandButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (node.manuallyExpanded) {
+          expandedMapOccurrenceKeys.delete(node.occurrenceKey);
+        } else {
+          expandedMapOccurrenceKeys.add(node.occurrenceKey);
+        }
+        renderMap();
+      });
+      shell.append(expandButton);
+    }
+
+    elements.mapNodeLayer.append(shell);
   }
 
   constrainMapCamera();
@@ -486,6 +596,13 @@ function renderMap() {
 
 function clampMapZoom(zoom) {
   return Math.min(MAP_MAX_ZOOM, Math.max(MAP_MIN_ZOOM, zoom));
+}
+
+function overviewModeForZoom(zoom) {
+  if (mapOverviewForced) return true;
+  return mapOverviewMode
+    ? zoom < MAP_OVERVIEW_EXIT_ZOOM
+    : zoom <= MAP_OVERVIEW_ENTER_ZOOM;
 }
 
 function constrainMapCamera() {
@@ -516,6 +633,11 @@ function applyMapCamera() {
   elements.mapZoomValue.textContent = `${percentage}%`;
   elements.mapZoomOutButton.disabled = mapCamera.zoom <= MAP_MIN_ZOOM;
   elements.mapZoomInButton.disabled = mapCamera.zoom >= MAP_MAX_ZOOM;
+  elements.mapZoomFitButton.classList.toggle("is-active", mapOverviewMode);
+  elements.mapZoomFitButton.setAttribute(
+    "aria-pressed",
+    String(mapOverviewMode),
+  );
 }
 
 function setMapZoom(nextZoom, anchorX, anchorY) {
@@ -532,6 +654,18 @@ function setMapZoom(nextZoom, anchorX, anchorY) {
   mapCamera.x = fixedX - contentX * zoom;
   mapCamera.y = fixedY - contentY * zoom;
   mapCamera.initialized = true;
+
+  if (mapOverviewForced && zoom >= MAP_OVERVIEW_EXIT_ZOOM) {
+    mapOverviewForced = false;
+  }
+  const nextOverviewMode = overviewModeForZoom(zoom);
+  if (nextOverviewMode !== mapOverviewMode) {
+    mapOverviewMode = nextOverviewMode;
+    renderMap();
+    window.requestAnimationFrame(centerCurrentMapNode);
+    return;
+  }
+
   constrainMapCamera();
   applyMapCamera();
 }
@@ -539,21 +673,24 @@ function setMapZoom(nextZoom, anchorX, anchorY) {
 function centerCurrentMapNode() {
   if (!renderedMapLayout) return;
 
-  const position = renderedMapLayout.positions.get(mapState.current);
+  const position = renderedMapLayout.positions.get(renderedCurrentOccurrenceId);
   if (!position) return;
 
   mapCamera.x =
     elements.mapViewport.clientWidth / 2 -
-    (position.x + MAP_NODE_WIDTH / 2) * mapCamera.zoom;
+    (position.x + renderedMapGeometry.nodeWidth / 2) * mapCamera.zoom;
   mapCamera.y =
     elements.mapViewport.clientHeight / 2 -
-    (position.y + MAP_NODE_HEIGHT / 2) * mapCamera.zoom;
+    (position.y + renderedMapGeometry.nodeHeight / 2) * mapCamera.zoom;
   mapCamera.initialized = true;
   constrainMapCamera();
   applyMapCamera();
 }
 
 function fitMapToViewport() {
+  mapOverviewForced = true;
+  mapOverviewMode = true;
+  renderMap();
   if (!renderedMapLayout) return;
 
   const viewportWidth = elements.mapViewport.clientWidth;
@@ -574,7 +711,7 @@ function fitMapToViewport() {
 }
 
 function startMapPan(event) {
-  if (event.button !== 0 || event.target.closest(".map-node")) return;
+  if (event.button !== 0 || event.target.closest(".map-node-shell")) return;
 
   event.preventDefault();
   mapPanPointer = {

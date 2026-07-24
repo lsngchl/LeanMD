@@ -23,6 +23,10 @@ function edgeOrder(edge, fallback) {
   return Number.isFinite(edge?.order) ? edge.order : fallback;
 }
 
+function occurrenceKey(documentPath) {
+  return JSON.stringify(documentPath);
+}
+
 export function unfoldExplorationMap(nodes, edges, root, options = {}) {
   const maximumNodeCount =
     Number.isInteger(options.maximumNodeCount) && options.maximumNodeCount > 0
@@ -67,7 +71,7 @@ export function unfoldExplorationMap(nodes, edges, root, options = {}) {
   let unfoldedRoot = null;
   let truncated = false;
 
-  function createOccurrence(documentId) {
+  function createOccurrence(documentId, documentPath) {
     if (unfoldedNodes.length >= maximumNodeCount) {
       truncated = true;
       return null;
@@ -79,19 +83,23 @@ export function unfoldExplorationMap(nodes, edges, root, options = {}) {
       ...documentNode,
       id: occurrenceId,
       documentId,
+      documentPath,
+      occurrenceKey: occurrenceKey(documentPath),
     });
     representedDocuments.add(documentId);
     return occurrenceId;
   }
 
   function expandComponent(startDocumentId) {
-    const startOccurrenceId = createOccurrence(startDocumentId);
+    const startDocumentPath = [startDocumentId];
+    const startOccurrenceId = createOccurrence(startDocumentId, startDocumentPath);
     if (startOccurrenceId === null) return null;
 
     const stack = [
       {
         documentId: startDocumentId,
         occurrenceId: startOccurrenceId,
+        documentPath: startDocumentPath,
         ancestors: new Set([startDocumentId]),
       },
     ];
@@ -103,7 +111,8 @@ export function unfoldExplorationMap(nodes, edges, root, options = {}) {
         const childDocumentId = sourceEdge.edge.to;
         if (current.ancestors.has(childDocumentId)) continue;
 
-        const childOccurrenceId = createOccurrence(childDocumentId);
+        const documentPath = [...current.documentPath, childDocumentId];
+        const childOccurrenceId = createOccurrence(childDocumentId, documentPath);
         if (childOccurrenceId === null) break;
 
         unfoldedEdges.push({
@@ -117,6 +126,7 @@ export function unfoldExplorationMap(nodes, edges, root, options = {}) {
         childFrames.push({
           documentId: childDocumentId,
           occurrenceId: childOccurrenceId,
+          documentPath,
           ancestors,
         });
       }
@@ -143,6 +153,106 @@ export function unfoldExplorationMap(nodes, edges, root, options = {}) {
     edges: unfoldedEdges,
     root: unfoldedRoot,
     truncated,
+  };
+}
+
+export function focusExplorationMap(
+  unfoldedMap,
+  currentDocumentId,
+  preferredDocumentPath = null,
+  expandedOccurrenceKeys = new Set(),
+) {
+  if (!unfoldedMap?.root || unfoldedMap.nodes.length === 0) {
+    return {
+      nodes: [],
+      edges: [],
+      root: null,
+      currentOccurrenceId: null,
+      currentDocumentPath: null,
+      truncated: unfoldedMap?.truncated === true,
+    };
+  }
+
+  const nodeById = new Map(unfoldedMap.nodes.map((node) => [node.id, node]));
+  const outgoing = new Map(unfoldedMap.nodes.map((node) => [node.id, []]));
+  const parentById = new Map();
+  for (const edge of unfoldedMap.edges) {
+    if (!nodeById.has(edge.from) || !nodeById.has(edge.to)) continue;
+    outgoing.get(edge.from).push(edge);
+    parentById.set(edge.to, edge.from);
+  }
+
+  const preferredKey = Array.isArray(preferredDocumentPath)
+    ? occurrenceKey(preferredDocumentPath)
+    : null;
+  let currentOccurrence =
+    unfoldedMap.nodes.find(
+      (node) =>
+        node.documentId === currentDocumentId &&
+        preferredKey !== null &&
+        node.occurrenceKey === preferredKey,
+    ) ??
+    unfoldedMap.nodes
+      .filter((node) => node.documentId === currentDocumentId)
+      .sort(
+        (a, b) =>
+          a.documentPath.length - b.documentPath.length ||
+          a.id.localeCompare(b.id),
+      )[0] ??
+    nodeById.get(unfoldedMap.root);
+
+  const automaticallyVisible = new Set([unfoldedMap.root]);
+  const rootChildEdges = outgoing.get(unfoldedMap.root) ?? [];
+  for (const edge of rootChildEdges) automaticallyVisible.add(edge.to);
+
+  if (currentOccurrence) {
+    let occurrenceId = currentOccurrence.id;
+    while (occurrenceId) {
+      automaticallyVisible.add(occurrenceId);
+      occurrenceId = parentById.get(occurrenceId) ?? null;
+    }
+    for (const edge of outgoing.get(currentOccurrence.id) ?? []) {
+      automaticallyVisible.add(edge.to);
+    }
+  }
+
+  const visible = new Set(automaticallyVisible);
+  let added;
+  do {
+    added = false;
+    for (const occurrenceId of [...visible]) {
+      const node = nodeById.get(occurrenceId);
+      if (!node || !expandedOccurrenceKeys.has(node.occurrenceKey)) continue;
+      for (const edge of outgoing.get(occurrenceId) ?? []) {
+        if (!visible.has(edge.to)) {
+          visible.add(edge.to);
+          added = true;
+        }
+      }
+    }
+  } while (added);
+
+  const focusedNodes = unfoldedMap.nodes
+    .filter((node) => visible.has(node.id))
+    .map((node) => {
+      const childEdges = outgoing.get(node.id) ?? [];
+      return {
+        ...node,
+        hiddenChildCount: childEdges.filter((edge) => !visible.has(edge.to)).length,
+        manuallyExpanded: expandedOccurrenceKeys.has(node.occurrenceKey),
+      };
+    });
+  const focusedEdges = unfoldedMap.edges.filter(
+    (edge) => visible.has(edge.from) && visible.has(edge.to),
+  );
+
+  return {
+    nodes: focusedNodes,
+    edges: focusedEdges,
+    root: unfoldedMap.root,
+    currentOccurrenceId: currentOccurrence?.id ?? null,
+    currentDocumentPath: currentOccurrence?.documentPath ?? null,
+    truncated: unfoldedMap.truncated,
   };
 }
 

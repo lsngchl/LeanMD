@@ -148,7 +148,7 @@ test("records live context only for structured LeanMD documents", () => {
 test("projects the complete LeanMD structure into the exploration map", () => {
   assert.match(html, /id="mapButton"/);
   assert.match(html, /id="mapOverlay"/);
-  assert.match(html, /Unexplored documents appear as question marks/);
+  assert.match(html, /\+N expands hidden branches/);
   assert.match(desktopHost, /UpdateStructuredMapAfterOpen\(markdownPath, previousPath\)/);
   assert.match(leanMdStructure, /IReadOnlyCollection<string> Documents => _documents/);
   assert.match(desktopHost, /_mapNodes\.AddRange\(structure\.Documents/);
@@ -158,6 +158,10 @@ test("projects the complete LeanMD structure into the exploration map", () => {
   assert.match(desktopHost, /unexplored = isStructuredMap && !visited\.Contains\(path\)/);
   assert.match(appSource, /function renderMap\(\)/);
   assert.match(appSource, /unfoldExplorationMap\(\s*mapState\.nodes/);
+  assert.match(appSource, /focusExplorationMap\(\s*unfoldedMap/);
+  assert.match(appSource, /expandedMapOccurrenceKeys/);
+  assert.match(appSource, /node\.hiddenChildCount/);
+  assert.match(appSource, /className = "map-node-expand-button"/);
   assert.match(appSource, /const count = mapState\.nodes\.length/);
   assert.match(appSource, /const isCurrent = documentId === mapState\.current/);
   assert.match(appSource, /const isPrevious = documentId === mapState\.previous/);
@@ -165,7 +169,8 @@ test("projects the complete LeanMD structure into the exploration map", () => {
   assert.match(stylesSource, /\.map-node\.is-unexplored\s*{/);
   assert.match(appSource, /const documentId = node\.documentId/);
   assert.match(appSource, /type: "open-map-node",[\s\S]*id: documentId,[\s\S]*position:/);
-  assert.match(appSource, /layoutExplorationMap\(\s*unfoldedMap\.nodes/);
+  assert.match(appSource, /layoutExplorationMap\(\s*displayedMap\.nodes/);
+  assert.match(stylesSource, /\.map-node-shell\s*{/);
   assert.doesNotMatch(appSource, /is-secondary/);
   assert.doesNotMatch(stylesSource, /stroke-dasharray/);
   assert.doesNotMatch(appSource, /isMapPositionFree|mapPositions\.has/);
@@ -233,11 +238,14 @@ test("renders and styles Markdown footnotes", () => {
   assert.match(stylesSource, /\.markdown-body \.footnote-backref/);
 });
 
-test("marks the immediately previous document on the map", () => {
+test("marks the immediately previous document only on the detailed map", () => {
   assert.match(desktopHost, /private string\? _previousMapPath/);
   assert.match(desktopHost, /previous = _previousMapPath/);
   assert.match(appSource, /previous: typeof nextState\.previous === "string"/);
-  assert.match(appSource, /button\.classList\.toggle\("is-previous", isPrevious\)/);
+  assert.match(
+    appSource,
+    /button\.classList\.toggle\("is-previous", isPrevious && !mapOverviewMode\)/,
+  );
   assert.match(stylesSource, /\.map-node\.is-previous::after\s*{/);
   assert.match(stylesSource, /content: "Previous"/);
   assert.match(
@@ -289,9 +297,52 @@ test("pans the map by dragging and zooms without scrollbars", () => {
   assert.match(html, /id="mapZoomOutButton"/);
   assert.match(html, /id="mapZoomInButton"/);
   assert.match(html, /id="mapZoomFitButton"/);
+  assert.match(html, />\s*Overview\s*</);
   assert.match(appSource, /setPointerCapture\(event\.pointerId\)/);
   assert.match(appSource, /addEventListener\("pointermove", moveMapPan\)/);
   assert.match(appSource, /function setMapZoom\(/);
+  assert.match(appSource, /MAP_OVERVIEW_ENTER_ZOOM = 0\.4/);
+  assert.match(appSource, /MAP_OVERVIEW_EXIT_ZOOM = 0\.48/);
+  assert.match(appSource, /mapOverviewForced = true/);
+  assert.match(appSource, /classList\.toggle\("is-overview", mapOverviewMode\)/);
+  assert.doesNotMatch(appSource, /MAP_OVERVIEW_GEOMETRY/);
+  assert.match(
+    appSource,
+    /layoutExplorationMap\(\s*displayedMap\.nodes,[\s\S]*MAP_NODE_GEOMETRY/,
+  );
+  assert.match(
+    appSource,
+    /button\.classList\.toggle\("is-previous", isPrevious && !mapOverviewMode\)/,
+  );
+  assert.match(
+    appSource,
+    /glyph\.textContent = isUnresolved[\s\S]*isUnexplored[\s\S]*isRoot/,
+  );
+  assert.match(stylesSource, /\.map-surface\.is-overview \.map-node\s*{/);
+  assert.doesNotMatch(
+    stylesSource,
+    /\.map-surface\.is-overview \.map-node-shell\s*{/,
+  );
+  assert.doesNotMatch(
+    stylesSource,
+    /\.map-surface\.is-overview \.map-node\s*{[^}]*border-radius:\s*50%/s,
+  );
+  assert.match(
+    stylesSource,
+    /\.map-surface\.is-overview \.map-node-glyph\s*{[^}]*font-size:\s*3rem/s,
+  );
+  assert.doesNotMatch(
+    stylesSource,
+    /\.map-surface\.is-overview \.map-edges path\s*{/,
+  );
+  assert.match(
+    stylesSource,
+    /\.map-surface\.is-overview \.map-node\.is-unresolved \.map-node-glyph\s*{/,
+  );
+  assert.match(
+    stylesSource,
+    /\.map-surface\.is-overview \.map-node\.is-unresolved::before\s*{?[^}]*content:\s*none/s,
+  );
   assert.match(appSource, /addEventListener\(\s*"wheel"/);
   assert.match(stylesSource, /\.map-viewport\s*{[^}]*overflow: hidden;/s);
   assert.match(stylesSource, /\.map-viewport\.is-panning\s*{[^}]*cursor: grabbing;/s);

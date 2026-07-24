@@ -208,7 +208,7 @@
             >
               Reset map
             </button>
-            <span>Unexplored documents appear as question marks · Drag to move · Mouse wheel to zoom</span>
+            <span>+N expands hidden branches · Overview shows the full structure</span>
           </div>
           <div class="map-zoom-controls" aria-label="Map zoom controls">
             <button
@@ -242,8 +242,14 @@
             <output id="mapZoomValue" class="map-zoom-value" for="mapZoomSlider">
               100%
             </output>
-            <button id="mapZoomFitButton" class="map-fit-button" type="button">
-              Fit
+            <button
+              id="mapZoomFitButton"
+              class="map-fit-button"
+              type="button"
+              aria-pressed="false"
+              title="Show full map overview"
+            >
+              Overview
             </button>
           </div>
         </footer>

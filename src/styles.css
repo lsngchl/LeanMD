@@ -868,13 +868,23 @@ a:focus-visible {
   stroke: none;
 }
 
-.map-node {
+.map-node-shell {
   position: absolute;
   top: 0;
   left: 0;
-  display: grid;
   width: 220px;
   height: 72px;
+}
+
+.map-node-shell.is-current {
+  z-index: 2;
+}
+
+.map-node {
+  position: relative;
+  display: grid;
+  width: 100%;
+  height: 100%;
   align-content: center;
   gap: 5px;
   padding: 10px 13px;
@@ -885,6 +895,29 @@ a:focus-visible {
   box-shadow: 0 8px 24px rgb(0 0 0 / 8%);
   cursor: pointer;
   text-align: left;
+}
+
+.map-node-expand-button {
+  position: absolute;
+  right: -10px;
+  bottom: -10px;
+  min-width: 28px;
+  height: 24px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--accent) 46%, var(--line));
+  border-radius: 999px;
+  color: var(--accent-strong);
+  background: var(--surface);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+  cursor: pointer;
+  font-size: 0.67rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.map-node-expand-button:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .map-node:hover {
@@ -991,6 +1024,49 @@ a:focus-visible {
 .map-node span {
   color: var(--muted);
   font-size: 0.68rem;
+}
+
+.map-node-glyph {
+  display: none;
+}
+
+.map-surface.is-overview .map-node {
+  place-items: center;
+  padding: 0;
+  text-align: center;
+}
+
+.map-surface.is-overview .map-node strong,
+.map-surface.is-overview .map-node-detail {
+  display: none;
+}
+
+.map-surface.is-overview .map-node-glyph {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  color: currentColor;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 3rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.map-surface.is-overview .map-node.is-unresolved .map-node-glyph {
+  color: var(--danger);
+}
+
+.map-surface.is-overview .map-node.is-current {
+  border-width: 2px;
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--accent) 32%, transparent),
+    0 14px 34px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.map-surface.is-overview .map-node.is-previous::after,
+.map-surface.is-overview .map-node.is-unresolved::before {
+  content: none;
 }
 
 .map-footer {
@@ -1143,6 +1219,12 @@ a:focus-visible {
 
 .map-fit-button {
   padding: 0 10px;
+}
+
+.map-fit-button.is-active {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background: var(--accent-soft);
 }
 
 .map-zoom-button:hover:not(:disabled),

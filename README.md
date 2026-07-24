@@ -1,6 +1,6 @@
 # LeanMD Viewer
 
-**Latest release: 1.4.2**
+**Latest release: 1.4.3**
 
 A small, local-first Markdown viewer that renders LaTeX written with either
 `\(...\)` and `\[...\]` or `$...$` and `$$...$$`.
@@ -31,8 +31,10 @@ installer display version are kept in sync with the latest release shown above.
 - Recursive map layout that keeps sibling subtrees ordered as branches grow
 - Map branches ordered by their source links rather than discovery order
 - Drag-to-pan map navigation with slider, button, fit, and wheel zoom controls
-- Full structured maps from the start, with unexplored documents shown as `?` nodes
+- Focused structured maps with the root branches, active path, and current children
+- Collapsible `+N` branches for temporarily revealing nearby structure
 - Shared DAG branches unfolded into duplicate, state-synchronized tree nodes
+- Card-preserving semantic overview below 40% zoom and from the Overview button
 - Persistent exploration maps for structured LeanMD document sets
 - Per-document unresolved toggles with composable map badges
 - External-link icons for web references that open in the system browser
@@ -67,17 +69,24 @@ and selected passage are written to the ignored
 Markdown files outside a structured document set are still viewed and
 automatically reloaded without creating this context file.
 
-The primary viewer window shows the complete structure immediately and saves
-exploration progress in the ignored `.leanmd/exploration-map.json` file.
+The primary viewer window saves exploration progress in the ignored
+`.leanmd/exploration-map.json` file. Its detailed map shows the root, every direct
+child of the root, the active path to the current document, and the current
+document's direct children. A `+N` control reveals hidden children on demand.
 Unexplored documents appear as `?` nodes and reveal their names and paths after
-they are opened. Sibling documents remain sibling branches under their structural
-parent. When multiple parents share a child, the map unfolds that child and its
-descendants under every parent. Those visual occurrences still represent one
-document, so opening any occurrence updates all of them together. The viewer
-watches `dependencies.json` and refreshes the full map when dependencies change.
-Resetting clears exploration progress except for the current document while
-keeping the entire structure visible. Independent recall windows keep temporary
-maps.
+they are opened. When multiple parents share a child, the map unfolds that child
+and its descendants under every displayed parent. Those visual occurrences still
+represent one document, so opening any occurrence updates all of them together.
+
+At 40% zoom or below, the map switches to a semantic overview of the full
+unfolded structure. It returns to the detailed map above 48% zoom. Overview keeps
+the same rectangular cards and tree spacing, replacing unreadable text with large
+centered state icons. Unresolved documents use the center icon rather than an
+attached badge, and the previous-document marker is omitted. The Overview button
+enters this mode directly and fits the full structure to the viewport. The viewer
+watches `dependencies.json` and refreshes the map when dependencies change.
+Resetting clears exploration progress except for the current document. Independent
+recall windows keep temporary maps.
 
 An adjacent `<document>.unresolved` marker records that a document is not yet
 understood. The desktop viewer creates or removes this marker from the document

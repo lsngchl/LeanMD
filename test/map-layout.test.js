@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  focusExplorationMap,
   layoutExplorationMap,
   routeExplorationMapEdges,
   unfoldExplorationMap,
@@ -54,6 +55,14 @@ test("unfolds shared DAG descendants into synchronized document occurrences", ()
       .filter((occurrence) => occurrence.documentId === "C")
       .every((occurrence) => occurrence.label === "?" && occurrence.unexplored),
   );
+  assert.ok(
+    unfolded.nodes
+      .filter((occurrence) => occurrence.documentId === "C")
+      .some(
+        (occurrence) =>
+          occurrence.documentPath.join("/") === "root/A/C",
+      ),
+  );
 
   const incomingCounts = new Map();
   for (const unfoldedEdge of unfolded.edges) {
@@ -63,6 +72,74 @@ test("unfolds shared DAG descendants into synchronized document occurrences", ()
     );
   }
   assert.ok([...incomingCounts.values()].every((count) => count === 1));
+});
+
+test("focuses the detail map on the current path and one child level", () => {
+  const nodes = ["root", "A", "B", "C", "D", "E", "F", "G"].map(node);
+  const edges = [
+    edge("root", "A", 0),
+    edge("root", "B", 1),
+    edge("A", "C", 0),
+    edge("A", "D", 1),
+    edge("B", "E", 0),
+    edge("C", "F", 0),
+    edge("C", "G", 1),
+  ];
+  const unfolded = unfoldExplorationMap(nodes, edges, "root");
+  const focused = focusExplorationMap(unfolded, "C", ["root", "A", "C"]);
+  const visibleDocuments = new Set(
+    focused.nodes.map((occurrence) => occurrence.documentId),
+  );
+
+  assert.deepEqual(visibleDocuments, new Set(["root", "A", "B", "C", "F", "G"]));
+  assert.equal(
+    focused.nodes.find((occurrence) => occurrence.documentId === "A")
+      .hiddenChildCount,
+    1,
+  );
+  assert.equal(
+    focused.nodes.find((occurrence) => occurrence.documentId === "B")
+      .hiddenChildCount,
+    1,
+  );
+
+  const branchB = unfolded.nodes.find(
+    (occurrence) => occurrence.documentPath.join("/") === "root/B",
+  );
+  const expanded = focusExplorationMap(
+    unfolded,
+    "C",
+    ["root", "A", "C"],
+    new Set([branchB.occurrenceKey]),
+  );
+  assert.ok(
+    expanded.nodes.some((occurrence) => occurrence.documentId === "E"),
+  );
+});
+
+test("uses the preferred duplicate occurrence as the active detail path", () => {
+  const nodes = ["root", "A", "B", "C"].map(node);
+  const edges = [
+    edge("root", "A", 0),
+    edge("root", "B", 1),
+    edge("A", "C", 0),
+    edge("B", "C", 0),
+  ];
+  const unfolded = unfoldExplorationMap(nodes, edges, "root");
+  const focused = focusExplorationMap(
+    unfolded,
+    "C",
+    ["root", "B", "C"],
+  );
+  const currentOccurrence = focused.nodes.find(
+    (occurrence) => occurrence.id === focused.currentOccurrenceId,
+  );
+
+  assert.deepEqual(currentOccurrence.documentPath, ["root", "B", "C"]);
+  assert.equal(
+    focused.nodes.filter((occurrence) => occurrence.documentId === "C").length,
+    1,
+  );
 });
 
 test("uses source-link order instead of discovery order for siblings", () => {
